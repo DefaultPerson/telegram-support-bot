@@ -1,0 +1,14 @@
+# Telegram Support Bot - Production
+# Connects to external Redis via environment variables
+
+services:
+  support-bot:
+    build:
+      context: .
+    container_name: hm-support-bot
+    command: sh -c "cd /usr/src/app && python -m app"
+    restart: always
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

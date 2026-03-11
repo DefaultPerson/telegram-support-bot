@@ -1,0 +1,23 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Logs
+.logs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Database
+*.db
+
+# Docker
+.docker/
