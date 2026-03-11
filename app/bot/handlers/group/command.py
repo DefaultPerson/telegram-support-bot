@@ -1,10 +1,10 @@
 from contextlib import suppress
 
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, MagicData
 from aiogram.types import Message
-from aiogram.utils.markdown import hcode, hbold
+from aiogram.utils.markdown import hbold, hcode
 
 from app.bot.manager import Manager
 from app.bot.utils.redis import RedisStorage

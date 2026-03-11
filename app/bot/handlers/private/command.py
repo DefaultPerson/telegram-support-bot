@@ -1,4 +1,4 @@
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.filters import Command, MagicData
 from aiogram.types import Message
 from aiogram_newsletter.manager import ANManager

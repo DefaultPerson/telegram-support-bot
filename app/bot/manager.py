@@ -5,11 +5,11 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    Message,
+    ForceReply,
     InlineKeyboardMarkup,
+    Message,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
-    ForceReply,
     User,
 )
 from aiogram.types.base import (

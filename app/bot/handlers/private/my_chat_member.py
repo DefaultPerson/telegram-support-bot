@@ -1,4 +1,4 @@
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.enums import ChatMemberStatus
 from aiogram.types import ChatMemberUpdated
 from aiogram.utils.markdown import hlink

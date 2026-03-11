@@ -1,7 +1,9 @@
 target-version = "py311"
+line-length = 120
 
 [lint]
 select = ["E", "F", "I"]
+ignore = ["E501"]
 
 [lint.per-file-ignores]
 "app/bot/handlers/**" = ["F811"]

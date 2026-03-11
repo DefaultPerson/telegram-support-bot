@@ -2,9 +2,9 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     BotCommand,
-    BotCommandScopeChat,
     BotCommandScopeAllGroupChats,
     BotCommandScopeAllPrivateChats,
+    BotCommandScopeChat,
 )
 
 from app.bot.utils.texts import SUPPORTED_LANGUAGES

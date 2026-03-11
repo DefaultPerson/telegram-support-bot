@@ -1,7 +1,7 @@
-from typing import Callable, Dict, Any, Awaitable
+from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject, User, Chat
+from aiogram.types import Chat, TelegramObject, User
 from redis.asyncio import Redis
 
 from app.bot.utils.redis import RedisStorage

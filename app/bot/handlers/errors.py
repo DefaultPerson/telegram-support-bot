@@ -2,10 +2,10 @@ import asyncio
 import logging
 import traceback
 
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.filters import ExceptionTypeFilter
-from aiogram.types import ErrorEvent, BufferedInputFile
-from aiogram.utils.markdown import hcode, hbold
+from aiogram.types import BufferedInputFile, ErrorEvent
+from aiogram.utils.markdown import hbold, hcode
 
 from app.bot.manager import Manager
 from app.bot.utils.exceptions import CreateForumTopicException, NotEnoughRightsException

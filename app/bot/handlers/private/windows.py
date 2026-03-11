@@ -1,13 +1,11 @@
 from contextlib import suppress
 
+from aiogram.types import InlineKeyboardButton as Button
+from aiogram.types import InlineKeyboardMarkup as Markup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.utils.markdown import hbold
 
 from app.bot.manager import Manager
-
-from aiogram.types import InlineKeyboardMarkup as Markup
-from aiogram.types import InlineKeyboardButton as Button
-
 from app.bot.utils.texts import SUPPORTED_LANGUAGES
 
 

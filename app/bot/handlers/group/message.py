@@ -1,7 +1,7 @@
 import asyncio
 from typing import Optional
 
-from aiogram import Router, F
+from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import MagicData
 from aiogram.types import Message

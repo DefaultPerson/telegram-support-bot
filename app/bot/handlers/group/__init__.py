@@ -1,5 +1,4 @@
-from . import command
-from . import message
+from . import command, message
 
 routers = [
     command.router,

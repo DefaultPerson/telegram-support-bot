@@ -5,7 +5,8 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 
 from app.config import Config
-from .exceptions import CreateForumTopicException, NotEnoughRightsException, NotAForumException
+
+from .exceptions import CreateForumTopicException, NotAForumException, NotEnoughRightsException
 from .redis import RedisStorage
 from .redis.models import UserData
 
