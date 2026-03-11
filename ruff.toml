@@ -1,0 +1,7 @@
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "I"]
+
+[lint.per-file-ignores]
+"app/bot/handlers/**" = ["F811"]
