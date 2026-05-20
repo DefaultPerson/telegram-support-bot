@@ -28,12 +28,20 @@ def get_provider(config: AIConfig) -> LLMProvider | None:
     if config.PROVIDER == "openai_compatible":
         from .openai_compatible import OpenAICompatibleProvider
 
-        return OpenAICompatibleProvider(
-            base_url=config.BASE_URL,
-            api_key=config.API_KEY,
-            model=config.MODEL,
-            timeout=config.TIMEOUT_S,
-        )
+        try:
+            return OpenAICompatibleProvider(
+                base_url=config.BASE_URL,
+                api_key=config.API_KEY,
+                model=config.MODEL,
+                timeout=config.TIMEOUT_S,
+            )
+        except ImportError:
+            logger.warning(
+                "AI_PROVIDER=openai_compatible but the 'openai' package is not "
+                "installed; LLM disabled. Install requirements-ai.txt (or build "
+                "with INSTALL_AI=1)."
+            )
+            return None
 
     raise ValueError(f"Unknown AI_PROVIDER: {config.PROVIDER!r}")
 
