@@ -1,13 +1,16 @@
 import asyncio
+from contextlib import suppress
 from typing import Optional
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import MagicData
 from aiogram.types import Message
 from aiogram.utils.markdown import hlink
 
 from app.bot.manager import Manager
+from app.bot.policy import EvalContext, PolicyEngine
+from app.bot.policy.context import EVENT_TOPIC_CREATED
 from app.bot.types.album import Album
 from app.bot.utils.redis import RedisStorage
 
@@ -20,10 +23,31 @@ router.message.filter(
 
 
 @router.message(F.forum_topic_created)
-async def handler(message: Message, manager: Manager, redis: RedisStorage) -> None:
+async def handler(
+        message: Message,
+        manager: Manager,
+        redis: RedisStorage,
+        policy_engine: PolicyEngine | None = None,
+) -> None:
     await asyncio.sleep(3)
     user_data = await redis.get_by_message_thread_id(message.message_thread_id)
     if not user_data: return None  # noqa
+
+    # Let policy close and/or silence the newly created topic, if configured.
+    if policy_engine is not None:
+        decision = policy_engine.evaluate(
+            EvalContext(event_type=EVENT_TOPIC_CREATED, language=user_data.language_code or "en")
+        )
+        if decision.close_topic:
+            user_data.status = "closed"
+            await redis.update_user(user_data.id, user_data)
+            with suppress(TelegramBadRequest):
+                await message.bot.close_forum_topic(
+                    chat_id=manager.config.bot.GROUP_ID,
+                    message_thread_id=message.message_thread_id,
+                )
+        if decision.suppress_group_notify:
+            return
 
     # Generate a URL for the user's profile
     url = f"https://t.me/{user_data.username[1:]}" if user_data.username != "-" else f"tg://user?id={user_data.id}"

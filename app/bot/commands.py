@@ -42,11 +42,19 @@ async def setup(bot: Bot, config: Config) -> None:
             BotCommand(command="ban", description="Block/Unblock a user"),
             BotCommand(command="silent", description="Activate/Deactivate silent Mode"),
             BotCommand(command="information", description="User information"),
+            BotCommand(command="template", description="Send a template reply: /template <key>"),
+            BotCommand(command="tag", description="Tag the conversation: /tag [name]"),
+            BotCommand(command="close", description="Close the conversation"),
+            BotCommand(command="escalate", description="Escalate the conversation"),
         ],
         "ru": [
             BotCommand(command="ban", description="Заблокировать/Разблокировать пользователя"),
             BotCommand(command="silent", description="Активировать/Деактивировать тихий режим"),
             BotCommand(command="information", description="Информация о пользователе"),
+            BotCommand(command="template", description="Отправить шаблон: /template <ключ>"),
+            BotCommand(command="tag", description="Пометить диалог тегом: /tag [имя]"),
+            BotCommand(command="close", description="Закрыть диалог"),
+            BotCommand(command="escalate", description="Эскалировать диалог"),
         ]
     }
 

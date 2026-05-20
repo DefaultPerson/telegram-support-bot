@@ -9,7 +9,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from .bot import commands
 from .bot.handlers import include_routers
+from .bot.llm import get_provider
 from .bot.middlewares import register_middlewares
+from .bot.policy import load_policy
 from .config import Config, load_config
 from .logger import setup_logger
 
@@ -90,6 +92,11 @@ async def main() -> None:
         config=config,
         bot=bot,
     )
+
+    # Optional policy engine and LLM provider (both disabled by default).
+    # Exposed as workflow data so aiogram injects them into handlers as kwargs.
+    dp["policy_engine"] = load_policy(config.policy) if config.policy.ENABLED else None
+    dp["llm_provider"] = get_provider(config.ai)
 
     # Register startup handler
     dp.startup.register(on_startup)

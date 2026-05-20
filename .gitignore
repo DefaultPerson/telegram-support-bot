@@ -1,6 +1,10 @@
 # Environment
 .env
 
+# Local policy / prompt overrides (keep only *.example.* in the repo)
+config/policy.yaml
+config/system_prompt.txt
+
 # Python
 __pycache__/
 *.py[cod]

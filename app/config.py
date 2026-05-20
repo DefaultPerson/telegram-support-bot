@@ -44,6 +44,40 @@ class RedisConfig:
 
 
 @dataclass
+class PolicyConfig:
+    """
+    Data class representing the configuration for the optional policy engine.
+
+    Attributes:
+    - ENABLED (bool): Whether the declarative policy engine is active.
+    - PATH (str): Path to the policy YAML file.
+    """
+    ENABLED: bool
+    PATH: str
+
+
+@dataclass
+class AIConfig:
+    """
+    Data class representing the configuration for the optional LLM provider.
+
+    Attributes:
+    - PROVIDER (str): "none" disables the LLM; "openai_compatible" enables it.
+    - BASE_URL (str): OpenAI-compatible base URL (OpenRouter, OpenAI, local, ...).
+    - API_KEY (str): API key; empty disables the provider.
+    - MODEL (str): Model identifier.
+    - SYSTEM_PROMPT_PATH (str): Path to the system prompt file.
+    - TIMEOUT_S (int): Per-request timeout in seconds.
+    """
+    PROVIDER: str
+    BASE_URL: str
+    API_KEY: str
+    MODEL: str
+    SYSTEM_PROMPT_PATH: str
+    TIMEOUT_S: int
+
+
+@dataclass
 class Config:
     """
     Data class representing the overall configuration for the application.
@@ -51,9 +85,13 @@ class Config:
     Attributes:
     - bot (BotConfig): The bot configuration.
     - redis (RedisConfig): The Redis configuration.
+    - policy (PolicyConfig): The policy engine configuration.
+    - ai (AIConfig): The LLM provider configuration.
     """
     bot: BotConfig
     redis: RedisConfig
+    policy: PolicyConfig
+    ai: AIConfig
 
 
 def load_config() -> Config:
@@ -76,5 +114,17 @@ def load_config() -> Config:
             HOST=env.str("REDIS_HOST"),
             PORT=env.int("REDIS_PORT"),
             DB=env.int("REDIS_DB"),
+        ),
+        policy=PolicyConfig(
+            ENABLED=env.bool("POLICY_ENABLED", False),
+            PATH=env.str("POLICY_CONFIG_PATH", "config/policy.yaml"),
+        ),
+        ai=AIConfig(
+            PROVIDER=env.str("AI_PROVIDER", "none"),
+            BASE_URL=env.str("AI_BASE_URL", "https://openrouter.ai/api/v1"),
+            API_KEY=env.str("AI_API_KEY", ""),
+            MODEL=env.str("AI_MODEL", "openai/gpt-5-nano"),
+            SYSTEM_PROMPT_PATH=env.str("AI_SYSTEM_PROMPT_PATH", "config/system_prompt.txt"),
+            TIMEOUT_S=env.int("AI_TIMEOUT_S", 8),
         ),
     )

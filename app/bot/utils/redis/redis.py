@@ -9,6 +9,7 @@ class RedisStorage:
     """Class for managing user data storage using Redis."""
 
     NAME = "users"
+    DRAFTS = "ai_drafts"
 
     def __init__(self, redis: Redis) -> None:
         """
@@ -82,7 +83,9 @@ class RedisStorage:
         data = await self._get(self.NAME, id_)
         if data is not None:
             decoded_data = json.loads(data)
-            return UserData(**decoded_data)
+            # Drop unknown keys so records written by other bot versions still load.
+            known = UserData.__dataclass_fields__.keys()
+            return UserData(**{k: v for k, v in decoded_data.items() if k in known})
         return None
 
     async def update_user(self, id_: int, data: UserData) -> None:
@@ -105,3 +108,17 @@ class RedisStorage:
         async with self.redis.client() as client:
             user_ids = await client.hkeys(self.NAME)
             return [int(user_id) for user_id in user_ids]
+
+    async def set_ai_draft(self, user_id: int, text: str) -> None:
+        """Stores a pending AI draft reply for the given user."""
+        await self._set(self.DRAFTS, user_id, text)
+
+    async def get_ai_draft(self, user_id: int) -> str | None:
+        """Retrieves the pending AI draft reply for the given user, if any."""
+        value = await self._get(self.DRAFTS, user_id)
+        return value.decode() if isinstance(value, bytes) else value
+
+    async def clear_ai_draft(self, user_id: int) -> None:
+        """Removes the pending AI draft reply for the given user."""
+        async with self.redis.client() as client:
+            await client.hdel(self.DRAFTS, user_id)
