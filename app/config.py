@@ -51,9 +51,12 @@ class PolicyConfig:
     Attributes:
     - ENABLED (bool): Whether the declarative policy engine is active.
     - PATH (str): Path to the policy YAML file.
+    - INLINE_B64 (str): Base64-encoded YAML used when PATH does not exist
+      (handy for platforms where mounting a file is awkward).
     """
     ENABLED: bool
     PATH: str
+    INLINE_B64: str = ""
 
 
 @dataclass
@@ -75,6 +78,7 @@ class AIConfig:
     MODEL: str
     SYSTEM_PROMPT_PATH: str
     TIMEOUT_S: int
+    SYSTEM_PROMPT_B64: str = ""
 
 
 @dataclass
@@ -118,6 +122,7 @@ def load_config() -> Config:
         policy=PolicyConfig(
             ENABLED=env.bool("POLICY_ENABLED", False),
             PATH=env.str("POLICY_CONFIG_PATH", "config/policy.yaml"),
+            INLINE_B64=env.str("POLICY_YAML_B64", ""),
         ),
         ai=AIConfig(
             PROVIDER=env.str("AI_PROVIDER", "none"),
@@ -126,5 +131,6 @@ def load_config() -> Config:
             MODEL=env.str("AI_MODEL", "openai/gpt-5-nano"),
             SYSTEM_PROMPT_PATH=env.str("AI_SYSTEM_PROMPT_PATH", "config/system_prompt.txt"),
             TIMEOUT_S=env.int("AI_TIMEOUT_S", 8),
+            SYSTEM_PROMPT_B64=env.str("AI_SYSTEM_PROMPT_B64", ""),
         ),
     )

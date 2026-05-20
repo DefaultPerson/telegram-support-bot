@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 from typing import Any
 
@@ -17,17 +18,27 @@ def load_policy_from_dict(raw: dict[str, Any]) -> PolicyEngine:
     return PolicyEngine(document)
 
 
+def load_policy_from_yaml(text: str) -> PolicyEngine:
+    """Build a PolicyEngine from a YAML string."""
+    return load_policy_from_dict(yaml.safe_load(text) or {})
+
+
 def load_policy(config: PolicyConfig) -> PolicyEngine:
     """
-    Load and validate the policy YAML referenced by ``config.PATH``.
+    Load and validate the policy.
 
-    Raises FileNotFoundError if the file is missing — callers should only invoke
-    this when ``config.ENABLED`` is true, so a missing file is a fail-fast error
-    rather than silently running without the expected filtering.
+    Prefers the YAML file at ``config.PATH``; if it does not exist, falls back
+    to base64-encoded YAML in ``config.INLINE_B64`` (useful where mounting a
+    file is awkward). Raises FileNotFoundError if neither source is available.
     """
     path = Path(config.PATH)
-    if not path.exists():
-        raise FileNotFoundError(f"Policy file not found: {path}")
+    if path.exists():
+        return load_policy_from_yaml(path.read_text(encoding="utf-8"))
 
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return load_policy_from_dict(raw)
+    if config.INLINE_B64:
+        decoded = base64.b64decode(config.INLINE_B64).decode("utf-8")
+        return load_policy_from_yaml(decoded)
+
+    raise FileNotFoundError(
+        f"Policy file not found ({path}) and POLICY_YAML_B64 is empty"
+    )

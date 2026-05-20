@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 from contextlib import suppress
 from pathlib import Path
@@ -94,6 +95,18 @@ def _read_system_prompt(path: str | None) -> str:
         return _DEFAULT_SYSTEM_PROMPT
 
 
+def _resolve_system_prompt(ai_config) -> str:
+    """Prefer base64-encoded prompt, then the file, then the built-in default."""
+    if ai_config.SYSTEM_PROMPT_B64:
+        try:
+            decoded = base64.b64decode(ai_config.SYSTEM_PROMPT_B64).decode("utf-8").strip()
+            if decoded:
+                return decoded
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to decode AI_SYSTEM_PROMPT_B64; using file/default.")
+    return _read_system_prompt(ai_config.SYSTEM_PROMPT_PATH)
+
+
 async def run_ai_draft(
     provider: LLMProvider,
     config: Config,
@@ -110,7 +123,7 @@ async def run_ai_draft(
     if not text.strip() or user_data.message_thread_id is None:
         return
 
-    system_prompt = _read_system_prompt(config.ai.SYSTEM_PROMPT_PATH)
+    system_prompt = _resolve_system_prompt(config.ai)
     try:
         result = await asyncio.wait_for(
             provider.classify_and_draft(

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -95,7 +96,14 @@ async def main() -> None:
 
     # Optional policy engine and LLM provider (both disabled by default).
     # Exposed as workflow data so aiogram injects them into handlers as kwargs.
-    dp["policy_engine"] = load_policy(config.policy) if config.policy.ENABLED else None
+    # A bad/missing policy config must never crash the bot — log and continue.
+    policy_engine = None
+    if config.policy.ENABLED:
+        try:
+            policy_engine = load_policy(config.policy)
+        except Exception as ex:  # noqa: BLE001
+            logging.error("Failed to load policy; continuing without it: %s", ex)
+    dp["policy_engine"] = policy_engine
     dp["llm_provider"] = get_provider(config.ai)
 
     # Register startup handler
