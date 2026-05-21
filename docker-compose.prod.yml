@@ -1,5 +1,5 @@
 # Telegram Support Bot - Production
-# Connects to external Redis via environment variables
+# Self-contained stack: the bot plus its Redis datastore.
 
 services:
   support-bot:
@@ -14,3 +14,11 @@ services:
       - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - ./redis/data:/data
