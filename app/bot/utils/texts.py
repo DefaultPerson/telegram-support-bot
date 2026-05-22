@@ -59,7 +59,7 @@ class TextMessage(Text):
             "en": {
                 "select_language": f"👋 <b>Hello</b>, {hbold('{full_name}')}!\n\nSelect language:",
                 "change_language": "<b>Select language:</b>",
-                "main_menu": "<b>Hello!</b> Write your question and we will reply as soon as possible.\n\nIf you would like to add a channel to the aggregator, please read the rules: https://t.me/clear_blog/14",
+                "main_menu": "<b>Hello!</b> Write your question and we will reply as soon as possible.\n\nIf you would like to add a channel to the aggregator, please read the rules: https://t.me/clear_blog/14\n\nChange language — /language",
                 "message_sent": "<b>Message sent!</b> Expect a response.",
                 "message_edited": (
                     "<b>The message was edited only in your chat.</b> "
@@ -109,11 +109,25 @@ class TextMessage(Text):
                 "silent_mode_disabled": (
                     "<b>Silent mode deactivated!</b> The user will receive all messages."
                 ),
+                "policy_disabled": "Policy engine is disabled.",
+                "template_usage": "Usage: /template &lt;key&gt;",
+                "template_not_found": "Template {key} not found.",
+                "template_sent": "🤖 Sent to the user:\n{text}",
+                "auto_reply_sent": "🤖 Auto-reply sent to the user:\n{text}",
+                "ai_draft_header": "🤖 Suggested reply:",
+                "ai_draft_send": "✅ Send",
+                "ai_draft_skip": "🗑 Skip",
+                "escalated": "Escalated.",
+                "escalated_dev": "Escalated: {full_name} (id {id})",
+                "draft_sent": "Sent",
+                "draft_send_failed": "Failed to send",
+                "draft_expired": "Draft expired",
+                "draft_skipped": "Skipped",
             },
             "ru": {
                 "select_language": f"👋 <b>Привет</b>, {hbold('{full_name}')}!\n\nВыберите язык:",
                 "change_language": "<b>Выберите язык:</b>",
-                "main_menu": "<b>Здравствуйте!</b> Напишите ваш вопрос — ответим в ближайшее время.\n\nЕсли хотите добавить канал в агрегатор, ознакомьтесь с правилами: https://t.me/clear_blog/14",
+                "main_menu": "<b>Здравствуйте!</b> Напишите ваш вопрос — ответим в ближайшее время.\n\nЕсли хотите добавить канал в агрегатор, ознакомьтесь с правилами: https://t.me/clear_blog/14\n\nСменить язык — /language",
                 "message_sent": "<b>Сообщение отправлено!</b> Ожидайте ответа.",
                 "message_edited": (
                     "<b>Сообщение отредактировано только в вашем чате.</b> "
@@ -163,5 +177,19 @@ class TextMessage(Text):
                 "silent_mode_disabled": (
                     "<b>Тихий режим деактивирован!</b> Пользователь будет получать все сообщения."
                 ),
+                "policy_disabled": "Движок политик отключён.",
+                "template_usage": "Использование: /template &lt;ключ&gt;",
+                "template_not_found": "Шаблон {key} не найден.",
+                "template_sent": "🤖 Отправлено пользователю:\n{text}",
+                "auto_reply_sent": "🤖 Бот отправил автоответ пользователю:\n{text}",
+                "ai_draft_header": "🤖 Черновик ответа:",
+                "ai_draft_send": "✅ Отправить",
+                "ai_draft_skip": "🗑 Пропустить",
+                "escalated": "Эскалировано.",
+                "escalated_dev": "Эскалация: {full_name} (id {id})",
+                "draft_sent": "Отправлено",
+                "draft_send_failed": "Не удалось отправить",
+                "draft_expired": "Черновик устарел",
+                "draft_skipped": "Пропущено",
             },
         }

@@ -5,7 +5,6 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, MagicData
 from aiogram.types import Message
-from aiogram.utils.markdown import hcode
 
 from app.bot.manager import Manager
 from app.bot.policy import PolicyEngine
@@ -33,18 +32,18 @@ async def template_handler(
     if not user_data: return None  # noqa
 
     if policy_engine is None:
-        await message.reply("Policy engine is disabled.")
+        await message.reply(manager.text_message.get("policy_disabled"))
         return
 
     key = (command.args or "").strip()
     if not key:
-        await message.reply("Usage: /template &lt;key&gt;")
+        await message.reply(manager.text_message.get("template_usage"))
         return
 
     try:
         text = render_template(policy_engine.document, key, user_data.language_code or "en")
     except KeyError:
-        await message.reply(f"Template {hcode(key)} not found.")
+        await message.reply(manager.text_message.get("template_not_found").format(key=key))
         return
 
     try:
@@ -57,7 +56,7 @@ async def template_handler(
 
     # Show what was sent in the topic and record it for LLM context.
     await redis.append_conversation(user_data.id, "assistant", text)
-    await message.reply(f"🤖 Отправлено пользователю:\n{text}")
+    await message.reply(manager.text_message.get("template_sent").format(text=text))
 
 
 @router.message(Command("close"))
@@ -86,6 +85,7 @@ async def escalate_handler(message: Message, manager: Manager, redis: RedisStora
     with suppress(Exception):
         await message.bot.send_message(
             chat_id=manager.config.bot.DEV_ID,
-            text=f"Escalated: {user_data.full_name} (id <code>{user_data.id}</code>)",
+            text=manager.text_message.get("escalated_dev").format(
+                full_name=user_data.full_name, id=user_data.id),
         )
-    await message.reply("Escalated.")
+    await message.reply(manager.text_message.get("escalated"))

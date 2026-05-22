@@ -14,6 +14,7 @@ from app.bot.policy import Decision, EvalContext
 from app.bot.policy.context import EVENT_USER_MESSAGE
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import UserData
+from app.bot.utils.texts import TextMessage
 from app.config import Config
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ async def apply_post_forward(
     if decision.is_noop:
         return
 
+    txt = TextMessage(user_data.language_code or "ru")
     changed = False
 
     if decision.escalate:
@@ -64,7 +66,7 @@ async def apply_post_forward(
         with suppress(Exception):
             await message.bot.send_message(
                 chat_id=config.bot.DEV_ID,
-                text=f"Escalated: {user_data.full_name} (id <code>{user_data.id}</code>)",
+                text=txt.get("escalated_dev").format(full_name=user_data.full_name, id=user_data.id),
             )
 
     if decision.close_topic and user_data.message_thread_id is not None:
@@ -84,7 +86,7 @@ async def apply_post_forward(
                 await message.bot.send_message(
                     chat_id=config.bot.GROUP_ID,
                     message_thread_id=user_data.message_thread_id,
-                    text=f"🤖 Бот отправил автоответ пользователю:\n{reply}",
+                    text=txt.get("auto_reply_sent").format(text=reply),
                 )
             with suppress(Exception):
                 await redis.append_conversation(user_data.id, "assistant", reply)
@@ -141,6 +143,7 @@ async def run_ai_draft(
     # the user selected in the bot (language_code).
     lang = user_data.language_code or "ru"
     lang_name = {"ru": "Russian", "en": "English"}.get(lang, lang)
+    txt = TextMessage(lang)
     system_prompt = _resolve_system_prompt(config.ai)
     system_prompt += f"\n\nIf the user's language is unclear, reply in {lang_name}."
     messages = [{"role": "system", "content": system_prompt}, *history]
@@ -161,8 +164,8 @@ async def run_ai_draft(
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[[
-            InlineKeyboardButton(text="\u2705 Send", callback_data=f"ai:send:{user_data.id}"),
-            InlineKeyboardButton(text="\U0001F5D1 Skip", callback_data=f"ai:skip:{user_data.id}"),
+            InlineKeyboardButton(text=txt.get("ai_draft_send"), callback_data=f"ai:send:{user_data.id}"),
+            InlineKeyboardButton(text=txt.get("ai_draft_skip"), callback_data=f"ai:skip:{user_data.id}"),
         ]]
     )
 
@@ -170,6 +173,7 @@ async def run_ai_draft(
         await message.bot.send_message(
             chat_id=config.bot.GROUP_ID,
             message_thread_id=user_data.message_thread_id,
-            text=f"\U0001F916 <b>\u0427\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u043E\u0442\u0432\u0435\u0442\u0430</b>\n\n{draft}",
+            text=f"{txt.get('ai_draft_header')}\n\n{draft}",
             reply_markup=keyboard,
+            parse_mode=None,
         )
