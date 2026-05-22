@@ -137,7 +137,13 @@ async def run_ai_draft(
             return
         history = [{"role": "user", "content": text}]
 
-    messages = [{"role": "system", "content": _resolve_system_prompt(config.ai)}, *history]
+    # Reply in the user's language; if it is unclear, fall back to the language
+    # the user selected in the bot (language_code).
+    lang = user_data.language_code or "ru"
+    lang_name = {"ru": "Russian", "en": "English"}.get(lang, lang)
+    system_prompt = _resolve_system_prompt(config.ai)
+    system_prompt += f"\n\nIf the user's language is unclear, reply in {lang_name}."
+    messages = [{"role": "system", "content": system_prompt}, *history]
 
     try:
         draft = await asyncio.wait_for(
