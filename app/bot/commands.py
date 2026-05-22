@@ -65,13 +65,34 @@ async def setup(bot: Bot, config: Config) -> None:
             [BotCommand(command="newsletter", description="Меню рассылки")],
     }
 
+    # Set commands for all private chats (set first so a DEV-chat failure below
+    # cannot skip refreshing the public/group command menus).
+    await bot.set_my_commands(
+        commands=commands["en"],
+        scope=BotCommandScopeAllPrivateChats(),
+    )
+    await bot.set_my_commands(
+        commands=commands["ru"],
+        scope=BotCommandScopeAllPrivateChats(),
+        language_code="ru",
+    )
+    # Set commands for all group chats.
+    await bot.set_my_commands(
+        commands=group_commands["en"],
+        scope=BotCommandScopeAllGroupChats(),
+    )
+    await bot.set_my_commands(
+        commands=group_commands["ru"],
+        scope=BotCommandScopeAllGroupChats(),
+        language_code="ru",
+    )
+
     try:
-        # Set commands for dev or admin in English language
+        # Set commands for dev or admin (adds /newsletter to the private menu).
         await bot.set_my_commands(
             commands=admin_commands["en"],
             scope=BotCommandScopeChat(chat_id=config.bot.DEV_ID),
         )
-        # Set commands for dev or admin in Russian language
         await bot.set_my_commands(
             commands=admin_commands["ru"],
             scope=BotCommandScopeChat(chat_id=config.bot.DEV_ID),
@@ -79,29 +100,6 @@ async def setup(bot: Bot, config: Config) -> None:
         )
     except TelegramBadRequest:
         raise ValueError(f"Chat with DEV_ID {config.bot.DEV_ID} not found.")
-
-    # Set commands for all private chats in English language
-    await bot.set_my_commands(
-        commands=commands["en"],
-        scope=BotCommandScopeAllPrivateChats(),
-    )
-    # Set commands for all private chats in Russian language
-    await bot.set_my_commands(
-        commands=commands["ru"],
-        scope=BotCommandScopeAllPrivateChats(),
-        language_code="ru",
-    )
-    # Set commands for all group chats in English language
-    await bot.set_my_commands(
-        commands=group_commands["en"],
-        scope=BotCommandScopeAllGroupChats(),
-    )
-    # Set commands for all group chats in Russian language
-    await bot.set_my_commands(
-        commands=group_commands["ru"],
-        scope=BotCommandScopeAllGroupChats(),
-        language_code="ru"
-    )
 
 
 async def delete(bot: Bot, config: Config) -> None:

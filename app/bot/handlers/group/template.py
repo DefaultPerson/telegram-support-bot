@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import suppress
 
 from aiogram import F, Router
@@ -48,9 +49,15 @@ async def template_handler(
 
     try:
         await message.bot.send_message(chat_id=user_data.id, text=text)
-        await message.reply(manager.text_message.get("message_sent_to_user"))
     except TelegramBadRequest:
-        await message.reply(manager.text_message.get("message_not_sent"))
+        err = await message.reply(manager.text_message.get("message_not_sent"))
+        await asyncio.sleep(5)
+        await err.delete()
+        return
+
+    # Show what was sent in the topic and record it for LLM context.
+    await redis.append_conversation(user_data.id, "assistant", text)
+    await message.reply(f"🤖 Отправлено пользователю:\n{text}")
 
 
 @router.message(Command("close"))

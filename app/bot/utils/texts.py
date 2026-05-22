@@ -59,7 +59,7 @@ class TextMessage(Text):
             "en": {
                 "select_language": f"👋 <b>Hello</b>, {hbold('{full_name}')}!\n\nSelect language:",
                 "change_language": "<b>Select language:</b>",
-                "main_menu": "<b>Write your question</b>, and we will answer you as soon as possible. If you want add channel to channels list, please read https://t.me/clear_blog/16",
+                "main_menu": "<b>Hello!</b> Write your question and we will reply as soon as possible.\n\nIf you would like to add a channel to the aggregator, please read the rules: https://t.me/clear_blog/14",
                 "message_sent": "<b>Message sent!</b> Expect a response.",
                 "message_edited": (
                     "<b>The message was edited only in your chat.</b> "
@@ -113,7 +113,7 @@ class TextMessage(Text):
             "ru": {
                 "select_language": f"👋 <b>Привет</b>, {hbold('{full_name}')}!\n\nВыберите язык:",
                 "change_language": "<b>Выберите язык:</b>",
-                "main_menu": "<b>Оставьте свой вопрос</b>, и мы ответим вам в ближайшее время. Если вы хотите добавить канал в каналы агрегатора, пожалуйста, прочитайте https://t.me/clear_blog/16",
+                "main_menu": "<b>Здравствуйте!</b> Напишите ваш вопрос — ответим в ближайшее время.\n\nЕсли хотите добавить канал в агрегатор, ознакомьтесь с правилами: https://t.me/clear_blog/14",
                 "message_sent": "<b>Сообщение отправлено!</b> Ожидайте ответа.",
                 "message_edited": (
                     "<b>Сообщение отредактировано только в вашем чате.</b> "

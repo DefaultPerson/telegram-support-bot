@@ -130,6 +130,7 @@ class RedisStorage:
         text = (text or "").strip()
         if not text:
             return
+        text = text[:2000]
         key = f"{self.CONV}:{user_id}"
         entry = json.dumps({"role": role, "content": text})
         async with self.redis.client() as client:
