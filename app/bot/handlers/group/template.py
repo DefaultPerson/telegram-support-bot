@@ -53,23 +53,6 @@ async def template_handler(
         await message.reply(manager.text_message.get("message_not_sent"))
 
 
-@router.message(Command("tag"))
-async def tag_handler(message: Message, command: CommandObject, redis: RedisStorage) -> None:
-    """Add a tag to the user, or list current tags: /tag [name]."""
-    user_data = await redis.get_by_message_thread_id(message.message_thread_id)
-    if not user_data: return None  # noqa
-
-    name = (command.args or "").strip()
-    if not name:
-        await message.reply(f"Tags: {', '.join(user_data.tags) or '—'}")
-        return
-
-    if name not in user_data.tags:
-        user_data.tags.append(name)
-        await redis.update_user(user_data.id, user_data)
-    await message.reply(f"Tagged: {hcode(name)}")
-
-
 @router.message(Command("close"))
 async def close_handler(message: Message, redis: RedisStorage) -> None:
     """Mark the conversation closed and close the forum topic."""

@@ -111,6 +111,9 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage, album
     except (Exception,):
         text = manager.text_message.get("message_not_sent")
 
+    # Record the manager's reply in the conversation transcript (LLM context).
+    await redis.append_conversation(user_data.id, "assistant", message.text or message.caption or "")
+
     # Reply to the edited message with the specified text
     msg = await message.reply(text)
     # Wait for 5 seconds before deleting the reply

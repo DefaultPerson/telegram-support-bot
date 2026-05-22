@@ -4,7 +4,7 @@ import logging
 
 from app.config import AIConfig
 
-from .base import ClassifyResult, LLMProvider
+from .base import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,6 @@ def get_provider(config: AIConfig) -> LLMProvider | None:
 
 
 __all__ = [
-    "ClassifyResult",
     "LLMProvider",
     "get_provider",
 ]

@@ -35,9 +35,6 @@ def apply_action(action: Action, ctx: EvalContext, doc: PolicyDocument, decision
         decision.close_topic = True
     elif action.type == "escalate":
         decision.escalate = True
-    elif action.type == "set_tag":
-        if action.name and action.name not in decision.tags:
-            decision.tags.append(action.name)
     elif action.type == "auto_reply":
         if not action.template_key:
             raise ValueError("auto_reply action requires 'template_key'")

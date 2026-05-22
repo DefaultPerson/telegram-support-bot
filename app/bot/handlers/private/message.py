@@ -17,6 +17,7 @@ from app.bot.utils.policy_runtime import (
     apply_auto_replies,
     apply_post_forward,
     build_message_context,
+    message_text,
     run_ai_draft,
 )
 from app.bot.utils.redis import RedisStorage
@@ -73,8 +74,8 @@ async def handle_incoming_message(
     if user_data.is_banned:
         return
 
-    # Whether this is the user's first contact (no topic yet).
-    first_contact = user_data.message_thread_id is None
+    # Record the incoming message in the conversation transcript (LLM context).
+    await redis.append_conversation(user_data.id, "user", message_text(message))
 
     # Evaluate declarative policy before forwarding, if enabled.
     decision = None
@@ -125,14 +126,12 @@ async def handle_incoming_message(
     if decision is not None:
         await apply_post_forward(decision, message, redis, user_data, manager.config)
 
-    # Offer an AI-drafted reply to the manager, if the LLM layer is enabled.
-    if llm_provider is not None:
-        only_first = policy_engine.ai.draft_only_first_message if policy_engine else True
-        if first_contact or not only_first:
-            categories = policy_engine.ai.categories if policy_engine else []
-            asyncio.create_task(
-                run_ai_draft(llm_provider, manager.config, categories, message, redis, user_data)
-            )
+    # Offer an AI-drafted reply to the manager, unless policy already auto-answered.
+    if llm_provider is not None and not (decision and decision.auto_replies):
+        max_context = policy_engine.ai.max_context_messages if policy_engine else 12
+        asyncio.create_task(
+            run_ai_draft(llm_provider, manager.config, message, redis, user_data, max_context)
+        )
 
     # Send a confirmation message to the user
     text = manager.text_message.get("message_sent")

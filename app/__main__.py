@@ -118,8 +118,9 @@ async def main() -> None:
         dp, config=config, redis=storage.redis, apscheduler=apscheduler
     )
 
-    # Start the bot
-    await bot.delete_webhook()
+    # Start the bot. Keep pending updates so messages sent while the bot was
+    # offline (e.g. during a redeploy) are processed, not dropped.
+    await bot.delete_webhook(drop_pending_updates=False)
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 

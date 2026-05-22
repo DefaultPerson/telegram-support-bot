@@ -52,16 +52,11 @@ async def apply_post_forward(
     user_data: UserData,
     config: Config,
 ) -> None:
-    """Apply tag/close/escalate side effects after the message was forwarded."""
+    """Apply close/escalate effects and mirror auto-replies into the topic."""
     if decision.is_noop:
         return
 
     changed = False
-
-    for tag in decision.tags:
-        if tag not in user_data.tags:
-            user_data.tags.append(tag)
-            changed = True
 
     if decision.escalate:
         user_data.status = "escalated"
@@ -80,6 +75,19 @@ async def apply_post_forward(
                 chat_id=config.bot.GROUP_ID,
                 message_thread_id=user_data.message_thread_id,
             )
+
+    # Mirror auto-replies into the topic so the manager sees what the user received,
+    # and record them in the conversation history for LLM context.
+    if decision.auto_replies and user_data.message_thread_id is not None:
+        for reply in decision.auto_replies:
+            with suppress(TelegramBadRequest):
+                await message.bot.send_message(
+                    chat_id=config.bot.GROUP_ID,
+                    message_thread_id=user_data.message_thread_id,
+                    text=f"🤖 Бот отправил автоответ пользователю:\n{reply}",
+                )
+            with suppress(Exception):
+                await redis.append_conversation(user_data.id, "assistant", reply)
 
     if changed and user_data.message_thread_id is not None:
         await redis.update_user(user_data.id, user_data)
@@ -110,54 +118,45 @@ def _resolve_system_prompt(ai_config) -> str:
 async def run_ai_draft(
     provider: LLMProvider,
     config: Config,
-    categories: list[str],
     message: Message,
     redis: RedisStorage,
     user_data: UserData,
+    max_context: int,
 ) -> None:
     """
-    Classify the message and post a suggested reply with Send/Skip buttons
-    into the user's forum topic. Best-effort: any failure is logged and ignored.
+    Draft a suggested reply based on the conversation so far and post it into
+    the user's topic with Send/Skip buttons. Best-effort: failures are logged.
     """
-    text = message_text(message)
-    if not text.strip() or user_data.message_thread_id is None:
+    if user_data.message_thread_id is None:
         return
 
-    system_prompt = _resolve_system_prompt(config.ai)
+    history = await redis.get_conversation(user_data.id, max_context)
+    if not history:
+        text = message_text(message)
+        if not text.strip():
+            return
+        history = [{"role": "user", "content": text}]
+
+    messages = [{"role": "system", "content": _resolve_system_prompt(config.ai)}, *history]
+
     try:
-        result = await asyncio.wait_for(
-            provider.classify_and_draft(
-                text=text,
-                language=user_data.language_code or "en",
-                categories=categories,
-                system_prompt=system_prompt,
-            ),
+        draft = await asyncio.wait_for(
+            provider.draft_reply(messages),
             timeout=config.ai.TIMEOUT_S,
         )
     except Exception as ex:  # noqa: BLE001 - best-effort, never block the pipeline
         logger.warning("AI draft failed: %s", ex)
         return
 
-    if result.category:
-        user_data.ai_category = result.category
-        with suppress(Exception):
-            await redis.update_user(user_data.id, user_data)
-
-    if not result.draft:
+    if not draft:
         return
 
-    await redis.set_ai_draft(user_data.id, result.draft)
-
-    header = "🤖 <b>AI draft</b>"
-    if result.category:
-        header += f" · {result.category}"
-    if result.confidence is not None:
-        header += f" · {result.confidence:.0%}"
+    await redis.set_ai_draft(user_data.id, draft)
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Send", callback_data=f"ai:send:{user_data.id}"),
-            InlineKeyboardButton(text="🗑 Skip", callback_data=f"ai:skip:{user_data.id}"),
+            InlineKeyboardButton(text="\u2705 Send", callback_data=f"ai:send:{user_data.id}"),
+            InlineKeyboardButton(text="\U0001F5D1 Skip", callback_data=f"ai:skip:{user_data.id}"),
         ]]
     )
 
@@ -165,6 +164,6 @@ async def run_ai_draft(
         await message.bot.send_message(
             chat_id=config.bot.GROUP_ID,
             message_thread_id=user_data.message_thread_id,
-            text=f"{header}\n\n{result.draft}",
+            text=f"\U0001F916 <b>\u0427\u0435\u0440\u043D\u043E\u0432\u0438\u043A \u043E\u0442\u0432\u0435\u0442\u0430</b>\n\n{draft}",
             reply_markup=keyboard,
         )

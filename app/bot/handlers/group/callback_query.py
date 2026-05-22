@@ -34,6 +34,7 @@ async def ai_draft_callback(call: CallbackQuery, redis: RedisStorage) -> None:
         if draft:
             try:
                 await call.bot.send_message(chat_id=user_id, text=draft)
+                await redis.append_conversation(user_id, "assistant", draft)
                 await call.answer("Sent")
             except TelegramBadRequest:
                 await call.answer("Failed to send", show_alert=True)

@@ -8,7 +8,6 @@ ActionType = Literal[
     "suppress_topic_creation",
     "suppress_group_notify",
     "auto_reply",
-    "set_tag",
     "close_topic",
     "escalate",
 ]
@@ -20,7 +19,6 @@ class Action(BaseModel):
 
     type: ActionType
     template_key: str | None = None
-    name: str | None = None
 
 
 class Rule(BaseModel):
@@ -43,9 +41,8 @@ class AISection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = False
-    categories: list[str] = Field(default_factory=list)
-    draft_only_first_message: bool = True
     system_prompt_path: str | None = None
+    max_context_messages: int = 12
 
 
 class PolicyDocument(BaseModel):

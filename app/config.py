@@ -128,7 +128,7 @@ def load_config() -> Config:
             PROVIDER=env.str("AI_PROVIDER", "none"),
             BASE_URL=env.str("AI_BASE_URL", "https://openrouter.ai/api/v1"),
             API_KEY=env.str("AI_API_KEY", ""),
-            MODEL=env.str("AI_MODEL", "openai/gpt-5-nano"),
+            MODEL=env.str("AI_MODEL", "openai/gpt-5.4-nano"),
             SYSTEM_PROMPT_PATH=env.str("AI_SYSTEM_PROMPT_PATH", "config/system_prompt.txt"),
             TIMEOUT_S=env.int("AI_TIMEOUT_S", 8),
             SYSTEM_PROMPT_B64=env.str("AI_SYSTEM_PROMPT_B64", ""),

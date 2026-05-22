@@ -11,7 +11,6 @@ class Decision:
     Holds only data — applying it to Telegram/Redis is the caller's job.
     """
     auto_replies: list[str] = field(default_factory=list)
-    tags: list[str] = field(default_factory=list)
     suppress_topic_creation: bool = False
     suppress_group_notify: bool = False
     close_topic: bool = False
@@ -22,7 +21,6 @@ class Decision:
         """True when the decision carries no instruction."""
         return not (
             self.auto_replies
-            or self.tags
             or self.suppress_topic_creation
             or self.suppress_group_notify
             or self.close_topic

@@ -10,6 +10,8 @@ class RedisStorage:
 
     NAME = "users"
     DRAFTS = "ai_drafts"
+    CONV = "conversations"
+    CONV_MAX = 40
 
     def __init__(self, redis: Redis) -> None:
         """
@@ -122,3 +124,27 @@ class RedisStorage:
         """Removes the pending AI draft reply for the given user."""
         async with self.redis.client() as client:
             await client.hdel(self.DRAFTS, user_id)
+
+    async def append_conversation(self, user_id: int, role: str, text: str) -> None:
+        """Append a message to the rolling conversation transcript for a user."""
+        text = (text or "").strip()
+        if not text:
+            return
+        key = f"{self.CONV}:{user_id}"
+        entry = json.dumps({"role": role, "content": text})
+        async with self.redis.client() as client:
+            await client.rpush(key, entry)
+            await client.ltrim(key, -self.CONV_MAX, -1)
+
+    async def get_conversation(self, user_id: int, limit: int) -> list[dict]:
+        """Return the last ``limit`` messages of the conversation in chronological order."""
+        key = f"{self.CONV}:{user_id}"
+        async with self.redis.client() as client:
+            raw = await client.lrange(key, -limit, -1)
+        result = []
+        for item in raw:
+            try:
+                result.append(json.loads(item))
+            except (ValueError, TypeError):
+                continue
+        return result

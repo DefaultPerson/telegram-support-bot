@@ -23,10 +23,8 @@ def make_engine():
             ]},
              "actions": [
                  {"type": "auto_reply", "template_key": "clarify"},
-                 {"type": "set_tag", "name": "short"},
+                 {"type": "escalate"},
              ]},
-            {"id": "always_tag", "when": {"event_type": "user_message"},
-             "actions": [{"type": "set_tag", "name": "seen"}]},
         ],
     })
 
@@ -38,24 +36,21 @@ def test_lifecycle_suppresses_notify():
     assert decision.auto_replies == []
 
 
-def test_multiple_rules_aggregate():
+def test_short_message_aggregates_actions():
     engine = make_engine()
     decision = engine.evaluate(EvalContext(EVENT_USER_MESSAGE, "hi", "en"))
-    # both "short" and "always_tag" match
     assert decision.auto_replies == ["elaborate"]
-    assert decision.tags == ["short", "seen"]
+    assert decision.escalate is True
 
 
-def test_long_message_only_tag():
+def test_long_message_matches_nothing():
     engine = make_engine()
     decision = engine.evaluate(EvalContext(EVENT_USER_MESSAGE, "x" * 50, "en"))
-    assert decision.auto_replies == []
-    assert decision.tags == ["seen"]
+    assert decision.is_noop is True
 
 
 def test_language_fallback_in_template():
     engine = make_engine()
-    # 'fr' has no template; falls back to 'en'
     decision = engine.evaluate(EvalContext(EVENT_USER_MESSAGE, "hi", "fr"))
     assert decision.auto_replies == ["elaborate"]
 

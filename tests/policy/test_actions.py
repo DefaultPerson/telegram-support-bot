@@ -46,14 +46,6 @@ def test_auto_reply_action_appends_rendered_text():
     assert decision.auto_replies == ["see https://x"]
 
 
-def test_set_tag_dedupes():
-    doc = make_doc()
-    decision = Decision()
-    apply_action(Action(type="set_tag", name="vip"), ctx(), doc, decision)
-    apply_action(Action(type="set_tag", name="vip"), ctx(), doc, decision)
-    assert decision.tags == ["vip"]
-
-
 def test_boolean_actions_set_flags():
     doc = make_doc()
     decision = Decision()

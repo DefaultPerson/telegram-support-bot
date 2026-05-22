@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 
 
@@ -16,10 +16,8 @@ class UserData:
     is_banned: bool = False
     language_code: str | None = None
     created_at: str = datetime.now(timezone(timedelta(hours=3))).strftime("%Y-%m-%d %H:%M:%S %Z")
-    # Optional policy/LLM metadata. Defaults keep old Redis records loadable.
-    tags: list[str] = field(default_factory=list)
+    # Conversation status used by /close and /escalate. Defaults keep old records loadable.
     status: str = "open"  # "open" | "closed" | "escalated"
-    ai_category: str | None = None
 
     def to_dict(self) -> dict:
         """

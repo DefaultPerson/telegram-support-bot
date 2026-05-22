@@ -1,27 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-
-@dataclass
-class ClassifyResult:
-    """Outcome of a single classify-and-draft call."""
-    category: str | None = None
-    draft: str | None = None
-    confidence: float | None = None
+# A chat message in OpenAI format: {"role": "system"|"user"|"assistant", "content": str}
+ChatMessage = dict[str, str]
 
 
 @runtime_checkable
 class LLMProvider(Protocol):
     """Provider-agnostic interface for the optional LLM layer."""
 
-    async def classify_and_draft(
-        self,
-        text: str,
-        language: str,
-        categories: list[str],
-        system_prompt: str,
-    ) -> ClassifyResult:
-        """Classify an incoming message and draft a suggested reply."""
+    async def draft_reply(self, messages: list[ChatMessage]) -> str | None:
+        """Given a chat transcript, draft the next assistant reply (or None)."""
         ...
