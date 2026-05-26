@@ -123,6 +123,7 @@ class TextMessage(Text):
                 "draft_send_failed": "Failed to send",
                 "draft_expired": "Draft expired",
                 "draft_skipped": "Skipped",
+                "new_user_general": "🆕 New user: {name}",
             },
             "ru": {
                 "select_language": f"👋 <b>Привет</b>, {hbold('{full_name}')}!\n\nВыберите язык:",
@@ -191,5 +192,6 @@ class TextMessage(Text):
                 "draft_send_failed": "Не удалось отправить",
                 "draft_expired": "Черновик устарел",
                 "draft_skipped": "Пропущено",
+                "new_user_general": "🆕 Новый пользователь: {name}",
             },
         }

@@ -47,6 +47,22 @@ async def handler(
                     message_thread_id=message.message_thread_id,
                 )
         if decision.suppress_group_notify:
+            # Drop the long "User X started the bot!" inside the per-user
+            # topic but still surface a short, clickable notice in the
+            # group's General topic (no message_thread_id).
+            url = (
+                f"https://t.me/{user_data.username[1:]}"
+                if user_data.username != "-"
+                else f"tg://user?id={user_data.id}"
+            )
+            short = manager.text_message.get("new_user_general").format(
+                name=hlink(user_data.full_name, url)
+            )
+            with suppress(TelegramBadRequest):
+                await message.bot.send_message(
+                    chat_id=manager.config.bot.GROUP_ID,
+                    text=short,
+                )
             return
 
     # Generate a URL for the user's profile
