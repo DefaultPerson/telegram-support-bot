@@ -1,5 +1,5 @@
 aiogram==3.22.0
-aiogram-newsletter>=0.0.10
+aiogram-newsletter>=0.0.12
 cachetools==6.2.0
 environs==15.0.1
 pydantic==2.11.9
