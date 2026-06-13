@@ -1,10 +1,12 @@
 import asyncio
 import logging
 
+import asyncpg
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram_broadcast import BroadcastScheduler, BroadcastService, PostgresBroadcastStorage
 from apscheduler.jobstores.redis import RedisJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -13,6 +15,7 @@ from .bot.handlers import include_routers
 from .bot.llm import get_provider
 from .bot.middlewares import register_middlewares
 from .bot.policy import load_policy
+from .bot.utils.redis import create_schema
 from .config import Config, load_config
 from .logger import setup_logger
 
@@ -22,6 +25,7 @@ async def on_shutdown(
     dispatcher: Dispatcher,
     config: Config,
     bot: Bot,
+    pg_pool: asyncpg.Pool,
 ) -> None:
     """
     Shutdown event handler. This runs when the bot shuts down.
@@ -30,12 +34,14 @@ async def on_shutdown(
     :param dispatcher: Dispatcher: The bot dispatcher.
     :param config: Config: The config instance.
     :param bot: Bot: The bot instance.
+    :param pg_pool: asyncpg.Pool: The PostgreSQL connection pool.
     """
     # Stop apscheduler
     apscheduler.shutdown()
-    # Delete commands and close storage when shutting down
+    # Delete commands and close storages when shutting down
     await commands.delete(bot, config)
     await dispatcher.storage.close()
+    await pg_pool.close()
     await bot.delete_webhook()
     await bot.session.close()
 
@@ -65,20 +71,27 @@ async def main() -> None:
     # Load config
     config = load_config()
 
-    # Initialize apscheduler
+    # Initialize apscheduler (Redis job store; password optional)
     job_store = RedisJobStore(
         host=config.redis.HOST,
         port=config.redis.PORT,
         db=config.redis.DB,
+        password=config.redis.PASSWORD or None,
     )
     apscheduler = AsyncIOScheduler(
         jobstores={"default": job_store},
     )
 
-    # Initialize Redis storage
+    # Initialize Redis FSM storage (password carried in the DSN)
     storage = RedisStorage.from_url(
         url=config.redis.dsn(),
     )
+
+    # Initialize the PostgreSQL pool and create schemas (user layer + subscribers)
+    pg_pool = await asyncpg.create_pool(config.db.URL)
+    await create_schema(pg_pool)
+    broadcast_storage = PostgresBroadcastStorage(pg_pool)
+    await broadcast_storage.create_schema()
 
     # Create Bot and Dispatcher instances
     bot = Bot(
@@ -87,12 +100,20 @@ async def main() -> None:
             parse_mode=ParseMode.HTML,
         ),
     )
+
+    # Broadcast service + scheduler (aiogram-broadcast)
+    broadcast_service = BroadcastService(bot, broadcast_storage)
+    broadcast_scheduler = BroadcastScheduler(broadcast_service, apscheduler)
+
     dp = Dispatcher(
         apscheduler=apscheduler,
         storage=storage,
         config=config,
         bot=bot,
     )
+    # Expose for handlers / shutdown
+    dp["broadcast_storage"] = broadcast_storage
+    dp["pg_pool"] = pg_pool
 
     # Optional policy engine and LLM provider (both disabled by default).
     # Exposed as workflow data so aiogram injects them into handlers as kwargs.
@@ -115,7 +136,11 @@ async def main() -> None:
     include_routers(dp)
     # Register middlewares
     register_middlewares(
-        dp, config=config, redis=storage.redis, apscheduler=apscheduler
+        dp,
+        pool=pg_pool,
+        broadcast_storage=broadcast_storage,
+        broadcast_service=broadcast_service,
+        broadcast_scheduler=broadcast_scheduler,
     )
 
     # Start the bot. Keep pending updates so messages sent while the bot was

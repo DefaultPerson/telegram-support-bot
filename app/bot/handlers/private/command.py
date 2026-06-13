@@ -1,16 +1,25 @@
 from aiogram import F, Router
-from aiogram.filters import Command, MagicData
+from aiogram.filters import BaseFilter, Command
 from aiogram.types import Message
-from aiogram_newsletter.manager import ANManager
+from aiogram_broadcast import BaseBroadcastStorage
+from aiogram_broadcast.ui import BroadcastUIManager
 
 from app.bot.handlers.private.windows import Window
 from app.bot.manager import Manager
 from app.bot.utils.create_forum_topic import get_or_create_forum_topic
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import UserData
+from app.config import Config
 
 router = Router()
 router.message.filter(F.chat.type == "private")
+
+
+class IsDev(BaseFilter):
+    """Allow only configured developer/admin IDs (``BOT_DEV_IDS``)."""
+
+    async def __call__(self, message: Message, config: Config) -> bool:
+        return message.from_user is not None and message.from_user.id in config.bot.DEV_IDS
 
 
 @router.message(Command("start"))
@@ -61,25 +70,23 @@ async def handler(message: Message, manager: Manager, user_data: UserData) -> No
         await Window.select_language(manager)
     await manager.delete_message(message)
 
-@router.message(
-    Command("newsletter"),
-    MagicData(F.event_from_user.id == F.config.bot.DEV_ID),  # type: ignore
-)
+
+@router.message(Command("newsletter"), IsDev())
 async def handler(
         message: Message,
         manager: Manager,
-        an_manager: ANManager,
-        redis: RedisStorage,
+        broadcast_ui: BroadcastUIManager,
+        broadcast_storage: BaseBroadcastStorage,
 ) -> None:
     """
-    Handles the /newsletter command.
+    Handles the /newsletter command — opens the broadcast UI for admins.
 
     :param message: Message object.
     :param manager: Manager object.
-    :param redis: RedisStorage object.
-    :param an_manager: Manager object from aiogram_newsletter.
+    :param broadcast_ui: Broadcast UI manager (from aiogram-broadcast).
+    :param broadcast_storage: Broadcast subscriber storage.
     :return: None
     """
-    users_ids = await redis.get_all_users_ids()
-    await an_manager.newsletter_menu(users_ids, Window.main_menu)
+    subscriber_ids = await broadcast_storage.get_all_subscriber_ids()
+    await broadcast_ui.open_menu(subscriber_ids)
     await manager.delete_message(message)

@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
@@ -87,19 +89,21 @@ async def setup(bot: Bot, config: Config) -> None:
         language_code="ru",
     )
 
-    try:
-        # Set commands for dev or admin (adds /newsletter to the private menu).
-        await bot.set_my_commands(
-            commands=admin_commands["en"],
-            scope=BotCommandScopeChat(chat_id=config.bot.DEV_ID),
-        )
-        await bot.set_my_commands(
-            commands=admin_commands["ru"],
-            scope=BotCommandScopeChat(chat_id=config.bot.DEV_ID),
-            language_code="ru",
-        )
-    except TelegramBadRequest:
-        raise ValueError(f"Chat with DEV_ID {config.bot.DEV_ID} not found.")
+    # Set commands for each dev/admin (adds /newsletter to the private menu).
+    # An admin who has not started the bot yet is skipped, not fatal.
+    for dev_id in config.bot.DEV_IDS:
+        try:
+            await bot.set_my_commands(
+                commands=admin_commands["en"],
+                scope=BotCommandScopeChat(chat_id=dev_id),
+            )
+            await bot.set_my_commands(
+                commands=admin_commands["ru"],
+                scope=BotCommandScopeChat(chat_id=dev_id),
+                language_code="ru",
+            )
+        except TelegramBadRequest:
+            logging.warning("Admin chat %s not found; skipping command setup.", dev_id)
 
 
 async def delete(bot: Bot, config: Config) -> None:
@@ -110,18 +114,18 @@ async def delete(bot: Bot, config: Config) -> None:
     :param bot: The Bot object.
     """
 
-    try:
-        # Delete commands for dev or admin in any language
-        await bot.delete_my_commands(
-            scope=BotCommandScopeChat(chat_id=config.bot.DEV_ID),
-        )
-        # Delete commands for dev or admin in Russian language
-        await bot.delete_my_commands(
-            scope=BotCommandScopeChat(chat_id=config.bot.DEV_ID),
-            language_code="ru",
-        )
-    except TelegramBadRequest:
-        raise ValueError(f"Chat with DEV_ID {config.bot.DEV_ID} not found.")
+    # Delete dev/admin command scopes (skip admins that never started the bot).
+    for dev_id in config.bot.DEV_IDS:
+        try:
+            await bot.delete_my_commands(
+                scope=BotCommandScopeChat(chat_id=dev_id),
+            )
+            await bot.delete_my_commands(
+                scope=BotCommandScopeChat(chat_id=dev_id),
+                language_code="ru",
+            )
+        except TelegramBadRequest:
+            logging.warning("Admin chat %s not found; skipping command deletion.", dev_id)
 
     # Delete commands for all private chats in any language
     await bot.delete_my_commands(

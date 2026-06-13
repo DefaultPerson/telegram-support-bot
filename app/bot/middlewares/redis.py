@@ -1,35 +1,38 @@
-from typing import Any, Awaitable, Callable, Dict
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
 from aiogram.types import Chat, TelegramObject, User
-from redis.asyncio import Redis
 
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import UserData
 from app.bot.utils.texts import SUPPORTED_LANGUAGES
 
+if TYPE_CHECKING:
+    from asyncpg import Pool
+
 
 class RedisMiddleware(BaseMiddleware):
     """
-    Middleware for integrating Redis storage with Aiogram.
+    Middleware that exposes the user-layer storage to handlers.
 
-    Args:
-        redis (Redis): The Redis instance for data storage.
+    Legacy name kept; the backing store is now PostgreSQL (asyncpg). Injects
+    ``redis`` (the :class:`RedisStorage` repository) and ``user_data`` into
+    handler data for private chats.
     """
 
-    def __init__(self, redis: Redis) -> None:
+    def __init__(self, pool: Pool) -> None:
         """
-        Initializes the RedisMiddleware instance.
-
-        :param redis: The Redis instance for data storage.
+        :param pool: asyncpg connection pool for the user-layer database.
         """
-        self.redis = redis
+        self.pool = pool
 
     async def __call__(
             self,
-            handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+            handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
             event: TelegramObject,
-            data: Dict[str, Any],
+            data: dict[str, Any],
     ) -> Any:
         """
         Call the middleware.
@@ -39,8 +42,8 @@ class RedisMiddleware(BaseMiddleware):
         :param data: Additional data.
         :return: The result of the handler function.
         """
-        # Create an instance of RedisStorage using the provided Redis instance
-        redis = RedisStorage(self.redis)
+        # Build the storage repository over the shared connection pool.
+        redis = RedisStorage(self.pool)
 
         # Extract the chat and user objects from data
         chat: Chat = data.get("event_chat")
@@ -48,7 +51,7 @@ class RedisMiddleware(BaseMiddleware):
 
         # Check if the chat type is private and the user object is not None
         if chat.type == "private" and user is not None:
-            # Retrieve user data from Redis based on user ID
+            # Retrieve user data from storage based on user ID
             user_redis = await redis.get_user(user.id)
             user_data = user_redis or UserData(
                 message_thread_id=None,
@@ -67,13 +70,13 @@ class RedisMiddleware(BaseMiddleware):
                 # If only one language is supported, set user language_code to the first language
                 user_data.language_code = list(SUPPORTED_LANGUAGES.keys())[0]
 
-            # Update user data in Redis
+            # Update user data in storage
             await redis.update_user(user.id, user_data)
         else:
             # For group chats or if the user object is None, set user_data to None
             user_data = None
 
-        # Add redis and user_data to data for use in subsequent handlers
+        # Add storage and user_data to data for use in subsequent handlers
         data["redis"] = redis
         data["user_data"] = user_data
 

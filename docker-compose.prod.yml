@@ -1,5 +1,6 @@
 # Telegram Support Bot - Production
-# Self-contained stack: the bot plus its Redis datastore.
+# Uses shared infrastructure: PostgreSQL (DATABASE_URL) + Redis (REDIS_*) over the
+# private network. No bundled datastores — all connection config comes from env.
 
 services:
   support-bot:
@@ -14,11 +15,3 @@ services:
       - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    depends_on:
-      - redis
-
-  redis:
-    image: redis:7-alpine
-    restart: always
-    volumes:
-      - ./redis/data:/data

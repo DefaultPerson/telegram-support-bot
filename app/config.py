@@ -10,37 +10,56 @@ class BotConfig:
 
     Attributes:
     - TOKEN (str): The bot token.
-    - DEV_ID (int): The developer's user ID.
+    - DEV_IDS (list[int]): The developer/admin user IDs (first one is primary).
     - GROUP_ID (int): The group chat ID.
     - BOT_EMOJI_ID (str): The custom emoji ID for the group's topic.
     """
     TOKEN: str
-    DEV_ID: int
+    DEV_IDS: list[int]
     GROUP_ID: int
     BOT_EMOJI_ID: str
+
+    @property
+    def DEV_ID(self) -> int:
+        """Primary developer ID (kept for single-recipient notifications)."""
+        return self.DEV_IDS[0]
 
 
 @dataclass
 class RedisConfig:
     """
-    Data class representing the configuration for Redis.
+    Data class representing the configuration for Redis (FSM + apscheduler only).
 
     Attributes:
     - HOST (str): The Redis host.
     - PORT (int): The Redis port.
     - DB (int): The Redis database number.
+    - PASSWORD (str): The Redis password (empty when the instance has no auth).
     """
     HOST: str
     PORT: int
     DB: int
+    PASSWORD: str = ""
 
     def dsn(self) -> str:
         """
-        Generates a Redis connection DSN (Data Source Name) using the provided host, port, and database.
+        Generates a Redis connection DSN using host, port, db and optional password.
 
         :return: The generated DSN.
         """
-        return f"redis://{self.HOST}:{self.PORT}/{self.DB}"
+        auth = f":{self.PASSWORD}@" if self.PASSWORD else ""
+        return f"redis://{auth}{self.HOST}:{self.PORT}/{self.DB}"
+
+
+@dataclass
+class DatabaseConfig:
+    """
+    Data class representing the configuration for PostgreSQL (user layer + subscribers).
+
+    Attributes:
+    - URL (str): asyncpg DSN, e.g. ``postgresql://user:pass@host:5432/db``.
+    """
+    URL: str
 
 
 @dataclass
@@ -88,12 +107,14 @@ class Config:
 
     Attributes:
     - bot (BotConfig): The bot configuration.
-    - redis (RedisConfig): The Redis configuration.
+    - redis (RedisConfig): The Redis configuration (FSM + scheduler).
+    - db (DatabaseConfig): The PostgreSQL configuration (user layer + subscribers).
     - policy (PolicyConfig): The policy engine configuration.
     - ai (AIConfig): The LLM provider configuration.
     """
     bot: BotConfig
     redis: RedisConfig
+    db: DatabaseConfig
     policy: PolicyConfig
     ai: AIConfig
 
@@ -107,10 +128,15 @@ def load_config() -> Config:
     env = Env()
     env.read_env()
 
+    # Admin IDs: prefer BOT_DEV_IDS (CSV); fall back to legacy single BOT_DEV_ID.
+    dev_ids = env.list("BOT_DEV_IDS", subcast=int, default=None)
+    if not dev_ids:
+        dev_ids = [env.int("BOT_DEV_ID")]
+
     return Config(
         bot=BotConfig(
             TOKEN=env.str("BOT_TOKEN"),
-            DEV_ID=env.int("BOT_DEV_ID"),
+            DEV_IDS=dev_ids,
             GROUP_ID=env.int("BOT_GROUP_ID"),
             BOT_EMOJI_ID=env.str("BOT_EMOJI_ID"),
         ),
@@ -118,6 +144,10 @@ def load_config() -> Config:
             HOST=env.str("REDIS_HOST"),
             PORT=env.int("REDIS_PORT"),
             DB=env.int("REDIS_DB"),
+            PASSWORD=env.str("REDIS_PASSWORD", ""),
+        ),
+        db=DatabaseConfig(
+            URL=env.str("DATABASE_URL"),
         ),
         policy=PolicyConfig(
             ENABLED=env.bool("POLICY_ENABLED", False),
