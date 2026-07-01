@@ -1,6 +1,6 @@
 aiogram==3.28.2
 aiogram-broadcast[postgres,ui]>=0.2.0
-apscheduler>=3.10.0
+apscheduler>=3.11.3
 asyncpg>=0.29.0
 cachetools==7.1.4
 environs==15.0.1
