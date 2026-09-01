@@ -57,14 +57,21 @@ class Album(TelegramObject):
         :return: A list of InputMedia objects.
         """
         bot = cast(Bot, self.bot)
-        group = [
-            INPUT_TYPES[media_type](media=media.file_id, parse_mode=bot.default.parse_mode)
+        items = [
+            (media_type, media)
             for media_type in self.media_types
             for media in getattr(self, media_type)
         ]
-        if group:
-            group[0].caption = self.caption
-        return group
+        # InputMedia* objects are immutable (frozen pydantic models), so the
+        # caption has to be passed to the constructor of the first item.
+        return [
+            INPUT_TYPES[media_type](
+                media=media.file_id,
+                parse_mode=bot.default.parse_mode,
+                caption=(self.caption or None) if index == 0 else None,
+            )
+            for index, (media_type, media) in enumerate(items)
+        ]
 
     def copy_to(
             self,

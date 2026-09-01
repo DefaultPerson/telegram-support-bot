@@ -71,6 +71,10 @@ class AIConfig:
     - MODEL (str): Model identifier.
     - SYSTEM_PROMPT_PATH (str): Path to the system prompt file.
     - TIMEOUT_S (int): Per-request timeout in seconds.
+    - MAX_TOKENS (int): Cap on the drafted reply length. Without it providers
+      reserve the model's full output window up front, which makes pay-as-you-go
+      backends reject the request once the remaining balance is smaller than
+      that reservation.
     """
     PROVIDER: str
     BASE_URL: str
@@ -79,6 +83,7 @@ class AIConfig:
     SYSTEM_PROMPT_PATH: str
     TIMEOUT_S: int
     SYSTEM_PROMPT_B64: str = ""
+    MAX_TOKENS: int = 1024
 
 
 @dataclass
@@ -132,5 +137,6 @@ def load_config() -> Config:
             SYSTEM_PROMPT_PATH=env.str("AI_SYSTEM_PROMPT_PATH", "config/system_prompt.txt"),
             TIMEOUT_S=env.int("AI_TIMEOUT_S", 8),
             SYSTEM_PROMPT_B64=env.str("AI_SYSTEM_PROMPT_B64", ""),
+            MAX_TOKENS=env.int("AI_MAX_TOKENS", 1024),
         ),
     )
