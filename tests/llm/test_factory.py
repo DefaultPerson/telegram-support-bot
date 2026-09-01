@@ -25,6 +25,10 @@ def test_empty_api_key_disables():
     assert get_provider(make_cfg(PROVIDER="openai_compatible", API_KEY="")) is None
 
 
+def test_max_tokens_defaults_to_a_bounded_value():
+    assert make_cfg().MAX_TOKENS == 1024
+
+
 def test_unknown_provider_raises():
     with pytest.raises(ValueError):
         get_provider(make_cfg(PROVIDER="bogus", API_KEY="sk-test"))

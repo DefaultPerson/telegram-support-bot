@@ -9,6 +9,7 @@ from aiogram.utils.markdown import hbold, hcode
 
 from app.bot.manager import Manager
 from app.bot.utils.exceptions import CreateForumTopicException, NotEnoughRightsException
+from app.bot.utils.redact import redact
 
 router = Router()
 
@@ -33,7 +34,7 @@ async def not_enough_rights_error(event: ErrorEvent, manager: Manager) -> None:
     :return: None
     """
     logging.exception(f'Update: {event.update}\nException: {event.exception}')
-    print(event.exception.args)
+
     await manager.bot.send_message(
         manager.config.bot.DEV_ID,
         NotEnoughRightsException.message,
@@ -70,10 +71,12 @@ async def telegram_api_error(event: ErrorEvent, manager: Manager) -> None:
 
     # Prepare data for document
     update_json = event.update.model_dump_json(indent=2, exclude_none=True)
-    exc_text, exc_name = str(event.exception), type(event.exception).__name__
+    exc_name = type(event.exception).__name__
+    # Exceptions may carry provider credentials or key hashes; never forward them.
+    exc_text = redact(str(event.exception), limit=None)
 
     # Send document with error details
-    document_data = traceback.format_exc().encode()
+    document_data = redact(traceback.format_exc(), limit=None).encode()
     document_name = f'error_{event.update.update_id}.txt'
 
     document = BufferedInputFile(document_data, filename=document_name)

@@ -12,6 +12,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from app.bot.llm import LLMProvider
 from app.bot.policy import Decision, EvalContext
 from app.bot.policy.context import EVENT_USER_MESSAGE
+from app.bot.utils.redact import redact
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import UserData
 from app.bot.utils.texts import TextMessage
@@ -154,7 +155,8 @@ async def run_ai_draft(
             timeout=config.ai.TIMEOUT_S,
         )
     except Exception as ex:  # noqa: BLE001 - best-effort, never block the pipeline
-        logger.warning("AI draft failed: %s", ex)
+        # Provider errors embed dashboard URLs with key hashes and can be huge.
+        logger.warning("AI draft failed: %s: %s", type(ex).__name__, redact(str(ex)))
         return
 
     if not draft:

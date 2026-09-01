@@ -87,6 +87,7 @@ Manager commands in a topic: `/template <key>`, `/tag [name]`, `/close`,
 | `AI_MODEL` | `openai/gpt-5-nano` | Model id |
 | `AI_SYSTEM_PROMPT_PATH` | `config/system_prompt.txt` | System prompt file |
 | `AI_TIMEOUT_S` | `8` | Per-request timeout |
+| `AI_MAX_TOKENS` | `1024` | Cap on the drafted reply length |
 
 When enabled, the first message of a conversation is classified and a draft
 reply is posted into the topic with **Send / Skip** buttons. Install the extra
