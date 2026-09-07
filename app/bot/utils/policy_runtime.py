@@ -5,6 +5,7 @@ import base64
 import logging
 from contextlib import suppress
 from pathlib import Path
+from typing import Optional
 
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -12,10 +13,12 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from app.bot.llm import LLMProvider
 from app.bot.policy import Decision, EvalContext
 from app.bot.policy.context import EVENT_USER_MESSAGE
+from app.bot.types.album import Album
 from app.bot.utils.redact import redact
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import UserData
 from app.bot.utils.texts import TextMessage
+from app.bot.utils.vision import as_data_urls, collect_attachments
 from app.config import Config
 
 logger = logging.getLogger(__name__)
@@ -118,6 +121,26 @@ def _resolve_system_prompt(ai_config) -> str:
     return _read_system_prompt(ai_config.SYSTEM_PROMPT_PATH)
 
 
+def _with_images(messages: list, text: str, data_urls: list) -> list:
+    """
+    Attach images to the turn they belong to, in OpenAI content-part format.
+
+    The stored transcript is text-only, so the caption of the incoming message
+    is already its last user turn; that turn is upgraded in place instead of
+    appending a duplicate one.
+    """
+    parts = []
+    if text.strip():
+        parts.append({"type": "text", "text": text})
+    parts.extend({"type": "image_url", "image_url": {"url": url}} for url in data_urls)
+
+    if messages and messages[-1].get("role") == "user" and messages[-1].get("content") == text:
+        messages[-1] = {"role": "user", "content": parts}
+    else:
+        messages.append({"role": "user", "content": parts})
+    return messages
+
+
 async def run_ai_draft(
     provider: LLMProvider,
     config: Config,
@@ -125,6 +148,7 @@ async def run_ai_draft(
     redis: RedisStorage,
     user_data: UserData,
     max_context: int,
+    album: Optional[Album] = None,
 ) -> None:
     """
     Draft a suggested reply based on the conversation so far and post it into
@@ -133,12 +157,25 @@ async def run_ai_draft(
     if user_data.message_thread_id is None:
         return
 
+    # Support requests are often a bare screenshot, so the images have to reach
+    # the model too; the transcript in storage only ever holds text.
+    data_urls = []
+    if config.ai.VISION:
+        attachments = collect_attachments(message, album)
+        if attachments:
+            data_urls = await as_data_urls(
+                message.bot,
+                attachments,
+                max_images=config.ai.MAX_IMAGES,
+                max_bytes=config.ai.IMAGE_MAX_BYTES,
+            )
+
     history = await redis.get_conversation(user_data.id, max_context)
     if not history:
         text = message_text(message)
-        if not text.strip():
+        if not text.strip() and not data_urls:
             return
-        history = [{"role": "user", "content": text}]
+        history = [{"role": "user", "content": text}] if text.strip() else []
 
     # Reply in the user's language; if it is unclear, fall back to the language
     # the user selected in the bot (language_code).
@@ -148,6 +185,8 @@ async def run_ai_draft(
     system_prompt = _resolve_system_prompt(config.ai)
     system_prompt += f"\n\nIf the user's language is unclear, reply in {lang_name}."
     messages = [{"role": "system", "content": system_prompt}, *history]
+    if data_urls:
+        messages = _with_images(messages, message_text(message), data_urls)
 
     try:
         draft = await asyncio.wait_for(

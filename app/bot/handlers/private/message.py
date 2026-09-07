@@ -130,7 +130,9 @@ async def handle_incoming_message(
     if llm_provider is not None and not (decision and decision.auto_replies):
         max_context = policy_engine.ai.max_context_messages if policy_engine else 12
         asyncio.create_task(
-            run_ai_draft(llm_provider, manager.config, message, redis, user_data, max_context)
+            run_ai_draft(
+                llm_provider, manager.config, message, redis, user_data, max_context, album
+            )
         )
 
     # Send a confirmation message to the user
