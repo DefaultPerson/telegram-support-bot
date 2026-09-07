@@ -22,7 +22,7 @@ class OpenAICompatibleProvider:
         api_key: str,
         model: str,
         timeout: int,
-        max_tokens: int = 1024,
+        max_tokens: int = 4096,
     ) -> None:
         from openai import AsyncOpenAI
 
@@ -39,5 +39,25 @@ class OpenAICompatibleProvider:
             messages=messages,
             max_tokens=self._max_tokens,
         )
-        content = response.choices[0].message.content
-        return content.strip() if content else None
+        choices = response.choices or []
+        if not choices:
+            logger.warning("LLM returned no choices; skipping the draft.")
+            return None
+
+        choice = choices[0]
+        content = (choice.message.content or "").strip()
+        if content:
+            return content
+
+        # Reasoning models bill their thinking tokens against max_tokens, so a
+        # budget that is too small comes back as finish_reason="length" with an
+        # empty message instead of an error. Say so instead of failing silently.
+        finish_reason = getattr(choice, "finish_reason", None)
+        if finish_reason == "length":
+            logger.warning(
+                "LLM hit the %s-token cap before producing a reply; raise AI_MAX_TOKENS.",
+                self._max_tokens,
+            )
+        else:
+            logger.warning("LLM returned an empty reply (finish_reason=%s).", finish_reason)
+        return None
