@@ -88,6 +88,9 @@ Manager commands in a topic: `/template <key>`, `/tag [name]`, `/close`,
 | `AI_SYSTEM_PROMPT_PATH` | `config/system_prompt.txt` | System prompt file |
 | `AI_TIMEOUT_S` | `8` | Per-request timeout |
 | `AI_MAX_TOKENS` | `4096` | Cap on the drafted reply length (reasoning tokens included) |
+| `AI_VISION` | `true` | Send attached images to the model (needs a multimodal `AI_MODEL`) |
+| `AI_MAX_IMAGES` | `4` | Images attached per album |
+| `AI_IMAGE_MAX_BYTES` | `5242880` | Per-image size ceiling; larger ones are skipped |
 
 When enabled, the first message of a conversation is classified and a draft
 reply is posted into the topic with **Send / Skip** buttons. Install the extra

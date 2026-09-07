@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
-# A chat message in OpenAI format: {"role": "system"|"user"|"assistant", "content": str}
-ChatMessage = dict[str, str]
+# A chat message in OpenAI format: {"role": "system"|"user"|"assistant", "content": ...}.
+# `content` is a plain string, or a list of parts ({"type": "text"|"image_url", ...})
+# when the turn carries attachments.
+ChatMessage = dict[str, Any]
 
 
 @runtime_checkable

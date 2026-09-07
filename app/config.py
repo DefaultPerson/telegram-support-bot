@@ -96,6 +96,10 @@ class AIConfig:
       that reservation. Reasoning models spend this same budget on their
       thinking tokens, so it must stay well above the length of the reply
       itself or the response comes back with no content at all.
+    - VISION (bool): Send attached images to the model. Requires a multimodal
+      MODEL; turn it off for text-only ones or the request is rejected.
+    - MAX_IMAGES (int): Cap on how many images of one album are attached.
+    - IMAGE_MAX_BYTES (int): Per-image size ceiling; larger ones are skipped.
     """
     PROVIDER: str
     BASE_URL: str
@@ -105,6 +109,9 @@ class AIConfig:
     TIMEOUT_S: int
     SYSTEM_PROMPT_B64: str = ""
     MAX_TOKENS: int = 4096
+    VISION: bool = True
+    MAX_IMAGES: int = 4
+    IMAGE_MAX_BYTES: int = 5_242_880
 
 
 @dataclass
@@ -170,5 +177,8 @@ def load_config() -> Config:
             TIMEOUT_S=env.int("AI_TIMEOUT_S", 8),
             SYSTEM_PROMPT_B64=env.str("AI_SYSTEM_PROMPT_B64", ""),
             MAX_TOKENS=env.int("AI_MAX_TOKENS", 4096),
+            VISION=env.bool("AI_VISION", True),
+            MAX_IMAGES=env.int("AI_MAX_IMAGES", 4),
+            IMAGE_MAX_BYTES=env.int("AI_IMAGE_MAX_BYTES", 5_242_880),
         ),
     )
