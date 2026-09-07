@@ -84,10 +84,10 @@ Manager commands in a topic: `/template <key>`, `/tag [name]`, `/close`,
 | `AI_PROVIDER` | `none` | `none` disables; `openai_compatible` enables |
 | `AI_BASE_URL` | `https://openrouter.ai/api/v1` | OpenAI-compatible base URL |
 | `AI_API_KEY` | _(empty)_ | API key; empty also disables |
-| `AI_MODEL` | `openai/gpt-5-nano` | Model id |
+| `AI_MODEL` | `openai/gpt-5.6-luna` | Model id |
 | `AI_SYSTEM_PROMPT_PATH` | `config/system_prompt.txt` | System prompt file |
 | `AI_TIMEOUT_S` | `8` | Per-request timeout |
-| `AI_MAX_TOKENS` | `1024` | Cap on the drafted reply length |
+| `AI_MAX_TOKENS` | `4096` | Cap on the drafted reply length (reasoning tokens included) |
 
 When enabled, the first message of a conversation is classified and a draft
 reply is posted into the topic with **Send / Skip** buttons. Install the extra

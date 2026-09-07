@@ -93,7 +93,9 @@ class AIConfig:
     - MAX_TOKENS (int): Cap on the drafted reply length. Without it providers
       reserve the model's full output window up front, which makes pay-as-you-go
       backends reject the request once the remaining balance is smaller than
-      that reservation.
+      that reservation. Reasoning models spend this same budget on their
+      thinking tokens, so it must stay well above the length of the reply
+      itself or the response comes back with no content at all.
     """
     PROVIDER: str
     BASE_URL: str
@@ -102,7 +104,7 @@ class AIConfig:
     SYSTEM_PROMPT_PATH: str
     TIMEOUT_S: int
     SYSTEM_PROMPT_B64: str = ""
-    MAX_TOKENS: int = 1024
+    MAX_TOKENS: int = 4096
 
 
 @dataclass
@@ -163,10 +165,10 @@ def load_config() -> Config:
             PROVIDER=env.str("AI_PROVIDER", "none"),
             BASE_URL=env.str("AI_BASE_URL", "https://openrouter.ai/api/v1"),
             API_KEY=env.str("AI_API_KEY", ""),
-            MODEL=env.str("AI_MODEL", "openai/gpt-5.4-nano"),
+            MODEL=env.str("AI_MODEL", "openai/gpt-5.6-luna"),
             SYSTEM_PROMPT_PATH=env.str("AI_SYSTEM_PROMPT_PATH", "config/system_prompt.txt"),
             TIMEOUT_S=env.int("AI_TIMEOUT_S", 8),
             SYSTEM_PROMPT_B64=env.str("AI_SYSTEM_PROMPT_B64", ""),
-            MAX_TOKENS=env.int("AI_MAX_TOKENS", 1024),
+            MAX_TOKENS=env.int("AI_MAX_TOKENS", 4096),
         ),
     )

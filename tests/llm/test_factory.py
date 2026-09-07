@@ -9,7 +9,7 @@ def make_cfg(**kwargs):
         PROVIDER="none",
         BASE_URL="https://openrouter.ai/api/v1",
         API_KEY="",
-        MODEL="openai/gpt-5-nano",
+        MODEL="openai/gpt-5.6-luna",
         SYSTEM_PROMPT_PATH="config/system_prompt.txt",
         TIMEOUT_S=8,
     )
@@ -26,7 +26,9 @@ def test_empty_api_key_disables():
 
 
 def test_max_tokens_defaults_to_a_bounded_value():
-    assert make_cfg().MAX_TOKENS == 1024
+    # Bounded so providers do not reserve the model's full output window, but
+    # large enough that a reasoning model can think and still answer.
+    assert make_cfg().MAX_TOKENS == 4096
 
 
 def test_unknown_provider_raises():
