@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ActionType = Literal[
     "suppress_topic_creation",
@@ -79,6 +79,25 @@ class AISection(BaseModel):
         return next((c for c in self.categories if c.key == key), None)
 
 
+class RemindersSection(BaseModel):
+    """Reminders in the topic when a user waits too long for a reply."""
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    # Minutes since the user's first unanswered message; one reminder each.
+    after_minutes: list[int] = Field(default_factory=lambda: [180, 1440])
+    # Category keys (ai.categories) whose conversations get no reminders.
+    skip_categories: list[str] = Field(default_factory=list)
+    check_interval_minutes: int = Field(default=10, ge=1)
+
+    @field_validator("after_minutes")
+    @classmethod
+    def _sorted_positive(cls, value: list[int]) -> list[int]:
+        if any(minutes < 1 for minutes in value):
+            raise ValueError("after_minutes must be positive")
+        return sorted(set(value))
+
+
 class PolicyDocument(BaseModel):
     """Top-level schema of a policy YAML file."""
     model_config = ConfigDict(extra="forbid")
@@ -89,3 +108,12 @@ class PolicyDocument(BaseModel):
     templates: dict[str, dict[str, str]] = Field(default_factory=dict)
     rules: list[Rule] = Field(default_factory=list)
     ai: AISection = Field(default_factory=AISection)
+    reminders: RemindersSection = Field(default_factory=RemindersSection)
+
+    @model_validator(mode="after")
+    def _known_skip_categories(self) -> "PolicyDocument":
+        keys = {c.key for c in self.ai.categories}
+        unknown = [key for key in self.reminders.skip_categories if key not in keys]
+        if unknown:
+            raise ValueError(f"reminders.skip_categories not in ai.categories: {unknown}")
+        return self

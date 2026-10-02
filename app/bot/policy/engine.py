@@ -4,7 +4,7 @@ from .actions import apply_action
 from .context import EvalContext
 from .decision import Decision
 from .matchers import matches
-from .schema import AISection, PolicyDocument
+from .schema import AISection, PolicyDocument, RemindersSection
 
 
 class PolicyEngine:
@@ -16,6 +16,10 @@ class PolicyEngine:
     @property
     def ai(self) -> AISection:
         return self.document.ai
+
+    @property
+    def reminders(self) -> RemindersSection:
+        return self.document.reminders
 
     def evaluate(self, ctx: EvalContext) -> Decision:
         """
