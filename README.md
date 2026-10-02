@@ -153,6 +153,7 @@ These options live in the `ai` section of the policy file (so they need
 | `categories` | `[]` | Classify the user's first message with a separate short LLM request. Each item: `key` (up to 40 Latin letters, digits, `_` or `-`), `title`, `icon`, `needs_human`, `notify_admins`. The icon goes before the topic name, the category is shown in the draft header and stored in the log, and `notify_admins` messages every admin in `BOT_DEV_IDS` with a link to the topic. An unclear answer maps to `other` when that key exists |
 | `auto_threshold` | `0.95` | `/ai_auto` warns before enabling a category whose share of sent drafts is lower |
 | `auto_min_drafts` | `20` | ... or which has fewer reviewed drafts than this |
+| `canned_replies` | `[]` | Pre-approved replies sent without review. Each item: `key` (up to 40 Latin letters, digits, `_` or `-`) and the text in `ru`, `en` or both |
 
 Admin commands in the support group (admins are `BOT_DEV_IDS`):
 
@@ -167,6 +168,24 @@ With the mode on, a draft for a conversation of that category goes to the user
 right away, as if the manager had pressed Send, and the topic gets a copy marked
 as an automatic reply. Silent mode (`/silent`) keeps it a normal draft. Modes are
 stored in PostgreSQL and are all off until an admin turns one on.
+
+With `canned_replies` set, the draft prompt lists them in the reply language
+(the other language when that one is missing) and asks the model to answer with
+one of them word for word when it fits, or in its own words otherwise. A draft
+that matches a canned reply in either language goes to the user right away,
+whatever the category (`needs_human` and the category's mode included), and the
+topic gets a copy marked as an automatic reply with the reply's key; the log
+records it as `auto_sent`. Spacing, case, `ё`/`е` and a final `.` or `!` do not
+count when comparing. Silent mode or a failed send keeps it a normal draft with
+**Send / Skip**, and any other text is handled as before.
+
+```yaml
+ai:
+  canned_replies:
+    - key: payout_schedule
+      en: "Payouts go out every Friday."
+      ru: "Выплаты приходят каждую пятницу."
+```
 
 ### Conversation summary
 

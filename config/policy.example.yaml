@@ -111,6 +111,19 @@ ai:
   # drafts than auto_min_drafts. The admin can still confirm.
   auto_threshold: 0.95
   auto_min_drafts: 20
+  # Pre-approved replies. The draft prompt lists them in the reply language
+  # and asks the model to answer with one of them word for word when it fits.
+  # A draft that matches one (in either language; spacing, case, ё/е and a
+  # final "." or "!" do not count) goes to the user right away, whatever the
+  # category, and the topic gets a copy. Silent mode or a failed send keeps it
+  # a normal draft. Empty (the default): every draft waits for the manager.
+  #   key: short id, up to 40 Latin letters, digits, "_" or "-"
+  #   ru, en: the text; at least one of them
+  canned_replies: []
+  # canned_replies:
+  #   - key: payout_schedule
+  #     en: "Payouts go out every Friday."
+  #     ru: "Выплаты приходят каждую пятницу."
   # Long conversations: turns older than max_context_messages reach the draft as
   # a running summary instead of being dropped. Once fold_batch of them are not
   # in the summary yet, a separate request to the same model folds them into it
