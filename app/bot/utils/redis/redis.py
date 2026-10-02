@@ -23,6 +23,7 @@ Tables (created idempotently by :func:`create_schema`):
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from .models import UserData
@@ -30,12 +31,29 @@ from .models import UserData
 if TYPE_CHECKING:
     from asyncpg import Pool, Record
 
-# Added to the transcript trim with ``keep_unsummarized``: only messages already
-# folded into the summary may go. A user without a summary keeps every message.
-_FOLDED_ONLY = (
-    "AND id <= COALESCE("
-    "(SELECT covered_id FROM conversation_summaries WHERE user_id = $1), 0)"
-)
+logger = logging.getLogger(__name__)
+
+# The transcript trim with ``keep_unsummarized``: past the last $2 messages only
+# those already folded into the summary go, and past the last $3 every one.
+# Returns how many of the deleted messages the summary never took in.
+_TRIM_KEEPING_UNSUMMARIZED = """
+    WITH gone AS (
+        DELETE FROM conversations
+        WHERE user_id = $1 AND id NOT IN (
+            SELECT id FROM conversations WHERE user_id = $1
+            ORDER BY id DESC LIMIT $2
+        ) AND (
+            id <= COALESCE((SELECT covered_id FROM conversation_summaries WHERE user_id = $1), 0)
+            OR id NOT IN (
+                SELECT id FROM conversations WHERE user_id = $1
+                ORDER BY id DESC LIMIT $3
+            )
+        )
+        RETURNING id
+    )
+    SELECT count(*) FROM gone
+    WHERE id > COALESCE((SELECT covered_id FROM conversation_summaries WHERE user_id = $1), 0)
+"""
 
 
 async def create_schema(pool: Pool) -> None:
@@ -177,13 +195,15 @@ class RedisStorage:
     """Repository for support-user data (PostgreSQL-backed; legacy name)."""
 
     CONV_MAX = 40
+    # With keep_unsummarized: past this many even unsummarized messages go.
+    CONV_HARD_MAX = 200
 
     def __init__(self, pool: Pool, keep_unsummarized: bool = False) -> None:
         """
         :param pool: asyncpg connection pool.
         :param keep_unsummarized: the CONV_MAX trim spares messages not yet
             folded into the user's summary (``ai.summary``), so none is lost
-            before the summary has taken it in.
+            before the summary has taken it in; up to CONV_HARD_MAX messages.
         """
         self.pool = pool
         self.keep_unsummarized = keep_unsummarized
@@ -322,8 +342,20 @@ class RedisStorage:
                 role,
                 text,
             )
-            # Trim to the last CONV_MAX messages for this user; with
-            # keep_unsummarized, only the ones already in the summary.
+            if self.keep_unsummarized:
+                lost = await conn.fetchval(
+                    _TRIM_KEEPING_UNSUMMARIZED, user_id, self.CONV_MAX, self.CONV_HARD_MAX
+                )
+                if lost:
+                    logger.warning(
+                        "Transcript of user %s is over %s messages: %s dropped before "
+                        "the summary took them in.",
+                        user_id,
+                        self.CONV_HARD_MAX,
+                        lost,
+                    )
+                return
+            # Trim to the last CONV_MAX messages for this user.
             await conn.execute(
                 """
                 DELETE FROM conversations
@@ -331,8 +363,7 @@ class RedisStorage:
                     SELECT id FROM conversations WHERE user_id = $1
                     ORDER BY id DESC LIMIT $2
                 )
-                """
-                + (_FOLDED_ONLY if self.keep_unsummarized else ""),
+                """,
                 user_id,
                 self.CONV_MAX,
             )

@@ -116,7 +116,7 @@ ai:
   # in the summary yet, a separate request to the same model folds them into it
   # (at most max_chars characters, in the language of the conversation); fewer
   # go to the model verbatim. While it is on, the stored transcript keeps every
-  # turn until the summary has taken it in.
+  # turn until the summary has taken it in, up to 200 per user.
   summary:
     enabled: false
     fold_batch: 8
