@@ -10,11 +10,14 @@ import asyncio
 import logging
 import os
 import uuid
+from types import SimpleNamespace
 
 import asyncpg
 import pytest
 
+from app.bot.policy import load_policy_from_dict
 from app.bot.utils import reminders
+from app.bot.utils.policy_runtime import run_ai_draft
 from app.bot.utils.redis.models import UserData
 from app.bot.utils.redis.redis import RedisStorage, create_schema
 
@@ -489,5 +492,62 @@ def test_trim_hard_cap_drops_even_unsummarized_messages(caplog):
             await keeping.append_conversation(25, "user", "one more")
         assert await contents(25) == [f"turn {n}" for n in range(5, cap + 3)] + ["one more"]
         assert caplog.records == []
+
+    run(scenario)
+
+
+class _FoldingProvider:
+    """Answers the n-th summary request with "summary n"."""
+
+    def __init__(self) -> None:
+        self.folds: list[str] = []
+        self.drafts: list[list] = []
+
+    async def draft_reply(self, messages):
+        if "running summary" not in messages[0]["content"]:
+            self.drafts.append(messages)
+            return "draft"
+        self.folds.append(messages[1]["content"])
+        return f"summary {len(self.folds)}"
+
+
+async def draft_with_summary(storage, provider, user_id):
+    from app.config import AIConfig
+
+    ai = AIConfig(
+        PROVIDER="openai_compatible", BASE_URL="", API_KEY="k", MODEL="m",
+        SYSTEM_PROMPT_PATH="", TIMEOUT_S=5, VISION=False,
+    )
+    bot = SimpleNamespace(send_message=lambda **kwargs: asyncio.sleep(0))
+    config = SimpleNamespace(ai=ai, bot=SimpleNamespace(GROUP_ID=-100))
+    message = SimpleNamespace(bot=bot, text="", caption=None)
+    policy = load_policy_from_dict({"ai": {"summary": {"enabled": True}}})
+    await run_ai_draft(provider, config, message, storage, user(user_id, thread_id=100 + user_id), 12,
+                       ai=policy.ai, data_urls=[])
+
+
+def test_backlog_is_folded_in_portions():
+    async def scenario(pool, storage):
+        keeping = RedisStorage(pool, keep_unsummarized=True)
+        # 140 turns older than the 12-turn window: portions of 40, 40, 40 and 20.
+        for n in range(152):
+            await keeping.append_conversation(27, "user", f"turn {n}")
+        ids = [row["id"] for row in await keeping.get_conversation_since(27, 0, 0)]
+        provider = _FoldingProvider()
+
+        await draft_with_summary(keeping, provider, 27)
+
+        assert len(provider.folds) == 4
+        assert provider.folds[0].endswith("Customer: turn 39")
+        assert provider.folds[3].startswith("Previous summary:\nsummary 3\n")
+        assert provider.folds[3].endswith("Customer: turn 139")
+        assert await keeping.get_conversation_summary(27) == ("summary 4", ids[139])
+        (messages,) = provider.drafts
+        assert messages[1]["content"].endswith("summary 4")
+        assert [m["content"] for m in messages[2:]] == [f"turn {n}" for n in range(140, 152)]
+
+        # Folded now, so the next message trims the transcript back to CONV_MAX.
+        await keeping.append_conversation(27, "user", "one more")
+        assert len(await keeping.get_conversation_since(27, 0, 0)) == RedisStorage.CONV_MAX
 
     run(scenario)

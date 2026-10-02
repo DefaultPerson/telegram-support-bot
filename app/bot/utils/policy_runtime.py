@@ -55,6 +55,11 @@ _SUMMARY_CONTEXT = "Summary of the earlier part of the conversation:\n{summary}"
 # How transcript roles read in the text sent for summarizing.
 _SPEAKERS = {"user": "Customer", "assistant": "Support"}
 
+# One summary request folds at most this many turns, and one draft makes at
+# most this many summary requests; later drafts fold the rest.
+_FOLD_TURNS_MAX = 40
+_FOLDS_PER_DRAFT = 5
+
 # Telegram's limit on a forum topic name.
 _TOPIC_NAME_MAX = 128
 
@@ -435,8 +440,11 @@ async def _summarized_history(
     """
     The summary and the turns for a draft with ai.summary on. Turns older than
     the window and not in the summary yet are folded into it once fold_batch of
-    them have piled up; fewer go verbatim before the window. If folding fails,
-    the draft gets the window alone, as with the summary off.
+    them have piled up, oldest first, at most _FOLD_TURNS_MAX per request and
+    _FOLDS_PER_DRAFT requests per draft; fewer go verbatim before the window.
+    More than fold_batch left over wait for the next draft instead of swelling
+    this one. If folding fails, the draft gets the window alone, as with the
+    summary off.
     """
     stored = await redis.get_conversation_summary(user_id)
     summary, covered_id = stored or (None, 0)
@@ -444,17 +452,26 @@ async def _summarized_history(
     split = max(len(rows) - window, 0)
     older, recent = rows[:split], rows[split:]
 
-    if len(older) >= settings.fold_batch:
-        folded = await _fold_summary(provider, config, settings, summary, older)
+    folds = 0
+    while len(older) >= settings.fold_batch and folds < _FOLDS_PER_DRAFT:
+        portion, older = older[:_FOLD_TURNS_MAX], older[_FOLD_TURNS_MAX:]
+        folded = await _fold_summary(provider, config, settings, summary, portion)
         if folded is None:
-            summary, older = None, []
-        else:
-            try:
-                await redis.set_conversation_summary(user_id, folded, older[-1]["id"])
-            except Exception as ex:  # noqa: BLE001 - the next draft folds them again
-                logger.warning("Failed to store the summary of user %s: %s", user_id, ex)
-            summary, older = folded, []
-    return summary, [{"role": t["role"], "content": t["content"]} for t in older + recent]
+            return None, _without_ids(recent)
+        try:
+            await redis.set_conversation_summary(user_id, folded, portion[-1]["id"])
+        except Exception as ex:  # noqa: BLE001 - the next draft folds them again
+            logger.warning("Failed to store the summary of user %s: %s", user_id, ex)
+        summary = folded
+        folds += 1
+    if len(older) > settings.fold_batch:
+        older = []
+    return summary, _without_ids(older + recent)
+
+
+def _without_ids(rows: list[dict]) -> list[dict]:
+    """Transcript rows as chat turns."""
+    return [{"role": row["role"], "content": row["content"]} for row in rows]
 
 
 async def run_ai_draft(
