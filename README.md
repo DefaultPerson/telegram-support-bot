@@ -54,6 +54,14 @@ graph TB
 4. dev: `python -m app`
 5. prod: `docker compose up -d`
 
+### Healthcheck
+
+The bot uses long polling and serves no HTTP, so it signals liveness with a
+file: every minute a successful `getMe` writes the current time into
+`HEARTBEAT_FILE` (default `/tmp/bot-heartbeat`; empty turns it off).
+`docker-compose.prod.yml` marks the container unhealthy once the file is older
+than 5 minutes (interval 60s, timeout 10s, 3 retries, 90s start period).
+
 ## Policy & AI extensions
 
 Both layers are **off by default** — leaving the env vars at their defaults
