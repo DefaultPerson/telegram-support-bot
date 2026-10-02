@@ -13,6 +13,8 @@ Tables (created idempotently by :func:`create_schema`):
 - ``first_messages`` — users who have already sent their first message.
 - ``ai_draft_log``  — every AI draft and its outcome (``ai.log_drafts``).
 - ``ai_auto_modes`` — categories whose drafts go to the user without review.
+- ``reply_waits``   — users waiting for a reply since ``since``, with the number
+  of reminders already posted (``reminders`` in the policy).
 
 ``users.category`` holds the category picked for the user's first message.
 """
@@ -134,6 +136,17 @@ async def create_schema(pool: Pool) -> None:
                 enabled BOOLEAN NOT NULL DEFAULT FALSE,
                 updated_by BIGINT,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+        # Not backfilled: only messages written after the upgrade start a wait,
+        # so turning reminders on does not flood the group with old conversations.
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reply_waits (
+                user_id BIGINT PRIMARY KEY,
+                since TIMESTAMPTZ NOT NULL DEFAULT now(),
+                reminded SMALLINT NOT NULL DEFAULT 0
             )
             """
         )
@@ -407,3 +420,64 @@ class RedisStorage:
                 enabled,
                 updated_by,
             )
+
+    async def start_reply_wait(self, user_id: int) -> None:
+        """The user wrote: start waiting for a reply, unless already waiting."""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO reply_waits (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
+                user_id,
+            )
+
+    async def end_reply_wait(self, user_id: int) -> None:
+        """The user got a reply: the wait and its reminders start over."""
+        async with self.pool.acquire() as conn:
+            await conn.execute("DELETE FROM reply_waits WHERE user_id = $1", user_id)
+
+    async def get_due_reply_waits(
+        self, after_minutes: list[int], skip_categories: list[str]
+    ) -> list[dict]:
+        """
+        Waits that passed a threshold they were not reminded of yet. ``level``
+        is the number of thresholds passed so far. Banned and silenced users,
+        closed or missing topics and skipped categories are left out.
+        """
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT * FROM (
+                    SELECT w.user_id, w.since, w.reminded,
+                           u.message_thread_id, u.language_code,
+                           extract(epoch FROM now() - w.since)::bigint / 60 AS waited_minutes,
+                           (SELECT count(*) FROM unnest($1::int[]) AS t(minutes)
+                            WHERE w.since <= now() - make_interval(mins => t.minutes))::int AS level
+                    FROM reply_waits w
+                    JOIN users u ON u.id = w.user_id
+                    WHERE NOT u.is_banned
+                      AND NOT u.message_silent_mode
+                      AND u.status <> 'closed'
+                      AND u.message_thread_id IS NOT NULL
+                      AND (u.category IS NULL OR u.category <> ALL($2::text[]))
+                ) due
+                WHERE level > reminded
+                ORDER BY since
+                """,
+                after_minutes,
+                skip_categories,
+            )
+        return [dict(row) for row in rows]
+
+    async def claim_reply_reminder(self, user_id: int, since, level: int) -> bool:
+        """
+        Record that the reminders up to ``level`` were posted for this wait.
+        False when another check got there first or the wait has ended since.
+        """
+        async with self.pool.acquire() as conn:
+            claimed = await conn.fetchval(
+                "UPDATE reply_waits SET reminded = $3 "
+                "WHERE user_id = $1 AND since = $2 AND reminded < $3 RETURNING user_id",
+                user_id,
+                since,
+                level,
+            )
+        return claimed is not None
