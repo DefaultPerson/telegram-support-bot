@@ -19,6 +19,11 @@ class Action(BaseModel):
 
     type: ActionType
     template_key: str | None = None
+    # auto_reply only: send this template to a user at most once
+    # (None falls back to defaults.auto_reply_once) ...
+    once: bool | None = None
+    # ... and whether sending it skips the LLM draft for the message.
+    suppress_draft: bool = True
 
 
 class Rule(BaseModel):
@@ -34,6 +39,8 @@ class Defaults(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     language_fallback: str = "en"
+    # Whether auto_reply actions without an explicit `once` repeat or not.
+    auto_reply_once: bool = False
 
 
 class AISection(BaseModel):

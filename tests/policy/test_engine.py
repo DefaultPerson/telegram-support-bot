@@ -39,7 +39,7 @@ def test_lifecycle_suppresses_notify():
 def test_short_message_aggregates_actions():
     engine = make_engine()
     decision = engine.evaluate(EvalContext(EVENT_USER_MESSAGE, "hi", "en"))
-    assert decision.auto_replies == ["elaborate"]
+    assert [r.text for r in decision.auto_replies] == ["elaborate"]
     assert decision.escalate is True
 
 
@@ -52,13 +52,13 @@ def test_long_message_matches_nothing():
 def test_language_fallback_in_template():
     engine = make_engine()
     decision = engine.evaluate(EvalContext(EVENT_USER_MESSAGE, "hi", "fr"))
-    assert decision.auto_replies == ["elaborate"]
+    assert [r.text for r in decision.auto_replies] == ["elaborate"]
 
 
 def test_russian_template_used():
     engine = make_engine()
     decision = engine.evaluate(EvalContext(EVENT_USER_MESSAGE, "hi", "ru"))
-    assert decision.auto_replies == ["уточните"]
+    assert [r.text for r in decision.auto_replies] == ["уточните"]
 
 
 def test_noop_for_unmatched_event():

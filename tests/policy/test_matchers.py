@@ -75,3 +75,11 @@ def test_implicit_and_multiple_leaves():
 def test_unknown_matcher_raises():
     with pytest.raises(ValueError):
         matches({"bogus": 1}, ctx("text"))
+
+
+def test_first_message():
+    first = EvalContext(event_type=EVENT_USER_MESSAGE, text="hi", first_message=True)
+    assert matches({"first_message": True}, first)
+    assert not matches({"first_message": False}, first)
+    assert not matches({"first_message": True}, ctx("hi"))
+    assert matches({"first_message": False}, ctx("hi"))

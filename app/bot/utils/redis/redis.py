@@ -9,6 +9,8 @@ Tables (created idempotently by :func:`create_schema`):
   ``message_thread_id`` unique index replaces the old ``users_index_*`` hashes.
 - ``ai_drafts``     — pending AI draft reply per user.
 - ``conversations`` — rolling per-user transcript (trimmed to ``CONV_MAX``).
+- ``auto_replies_sent`` — once-only policy auto-replies already sent per user.
+- ``first_messages`` — users who have already sent their first message.
 """
 
 from __future__ import annotations
@@ -66,6 +68,31 @@ async def create_schema(pool: Pool) -> None:
         )
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS conversations_user_idx ON conversations (user_id, id)"
+        )
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS auto_replies_sent (
+                user_id BIGINT NOT NULL,
+                template_key TEXT NOT NULL,
+                sent_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                PRIMARY KEY (user_id, template_key)
+            )
+            """
+        )
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS first_messages (
+                user_id BIGINT PRIMARY KEY,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+        # Users who wrote before this table existed are not new: their turns
+        # are already in the transcript.
+        await conn.execute(
+            "INSERT INTO first_messages (user_id) "
+            "SELECT DISTINCT user_id FROM conversations WHERE role = 'user' "
+            "ON CONFLICT DO NOTHING"
         )
 
 
@@ -174,6 +201,27 @@ class RedisStorage:
         """Remove the pending AI draft reply for the given user."""
         async with self.pool.acquire() as conn:
             await conn.execute("DELETE FROM ai_drafts WHERE user_id = $1", user_id)
+
+    async def claim_first_message(self, user_id: int) -> bool:
+        """Record that the user has written; True only for their very first message."""
+        async with self.pool.acquire() as conn:
+            inserted = await conn.fetchval(
+                "INSERT INTO first_messages (user_id) VALUES ($1) "
+                "ON CONFLICT DO NOTHING RETURNING user_id",
+                user_id,
+            )
+        return inserted is not None
+
+    async def claim_auto_reply(self, user_id: int, template_key: str) -> bool:
+        """Mark a once-only auto-reply as sent; True only the first time per user and key."""
+        async with self.pool.acquire() as conn:
+            inserted = await conn.fetchval(
+                "INSERT INTO auto_replies_sent (user_id, template_key) VALUES ($1, $2) "
+                "ON CONFLICT DO NOTHING RETURNING user_id",
+                user_id,
+                template_key,
+            )
+        return inserted is not None
 
     async def append_conversation(self, user_id: int, role: str, text: str) -> None:
         """Append a message to the rolling conversation transcript for a user."""

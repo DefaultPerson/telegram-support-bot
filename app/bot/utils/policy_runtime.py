@@ -34,20 +34,36 @@ def message_text(message: Message) -> str:
     return message.text or message.caption or ""
 
 
-def build_message_context(message: Message, user_data: UserData) -> EvalContext:
+def build_message_context(
+    message: Message, user_data: UserData, first_message: bool = False
+) -> EvalContext:
     """Build an EvalContext for an incoming user message."""
     return EvalContext(
         event_type=EVENT_USER_MESSAGE,
         text=message_text(message),
         language=user_data.language_code or "en",
+        first_message=first_message,
     )
 
 
-async def apply_auto_replies(decision: Decision, message: Message) -> None:
-    """Send any policy auto-replies back to the user in their private chat."""
-    for text in decision.auto_replies:
+async def apply_auto_replies(
+    decision: Decision, message: Message, redis: RedisStorage, user_data: UserData
+) -> None:
+    """
+    Send any policy auto-replies back to the user in their private chat.
+
+    Once-only replies the user already received are dropped from the decision,
+    so later steps (topic mirror, draft suppression) see only what was sent.
+    """
+    sent = []
+    for reply in decision.auto_replies:
+        # Claimed before sending, so two messages in a row cannot both send it.
+        if reply.once and not await redis.claim_auto_reply(user_data.id, reply.template_key):
+            continue
         with suppress(TelegramBadRequest):
-            await message.answer(text)
+            await message.answer(reply.text)
+        sent.append(reply)
+    decision.auto_replies = sent
 
 
 async def apply_post_forward(
@@ -83,17 +99,20 @@ async def apply_post_forward(
             )
 
     # Mirror auto-replies into the topic so the manager sees what the user received,
-    # and record them in the conversation history for LLM context.
+    # and record them in the conversation history for LLM context. A reply that
+    # leaves the draft on is a notice, not an answer: kept out of the history so
+    # the draft still answers the user's message instead of following the notice.
     if decision.auto_replies and user_data.message_thread_id is not None:
         for reply in decision.auto_replies:
             with suppress(TelegramBadRequest):
                 await message.bot.send_message(
                     chat_id=config.bot.GROUP_ID,
                     message_thread_id=user_data.message_thread_id,
-                    text=txt.get("auto_reply_sent").format(text=reply),
+                    text=txt.get("auto_reply_sent").format(text=reply.text),
                 )
-            with suppress(Exception):
-                await redis.append_conversation(user_data.id, "assistant", reply)
+            if reply.suppress_draft:
+                with suppress(Exception):
+                    await redis.append_conversation(user_data.id, "assistant", reply.text)
 
     if changed and user_data.message_thread_id is not None:
         await redis.update_user(user_data.id, user_data)

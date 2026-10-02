@@ -17,7 +17,9 @@ class EvalContext:
     :param event_type: One of the EVENT_* constants.
     :param text: The user's message text (empty for non-message events).
     :param language: Two-letter language code used to render templates.
+    :param first_message: True for the very first message the user sends.
     """
     event_type: str
     text: str = ""
     language: str = "en"
+    first_message: bool = False

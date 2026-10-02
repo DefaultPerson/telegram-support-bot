@@ -5,11 +5,12 @@ from .context import (
     EVENT_USER_STOPPED,
     EvalContext,
 )
-from .decision import Decision
+from .decision import AutoReply, Decision
 from .engine import PolicyEngine
 from .loader import load_policy, load_policy_from_dict
 
 __all__ = [
+    "AutoReply",
     "Decision",
     "EvalContext",
     "PolicyEngine",
