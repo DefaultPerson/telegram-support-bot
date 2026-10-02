@@ -18,6 +18,7 @@ from .bot.policy import PolicyEngine, load_policy
 from .bot.utils.heartbeat import run_heartbeat
 from .bot.utils.redis import create_schema
 from .bot.utils.reminders import drop_reply_waits, reminders_enabled, run_reply_reminders
+from .bot.utils.texts import TextMessage
 from .config import Config, load_config
 from .logger import setup_logger
 
@@ -155,6 +156,9 @@ async def main() -> None:
         except Exception as ex:  # noqa: BLE001
             logging.error("Failed to load policy; continuing without it: %s", ex)
     dp["policy_engine"] = policy_engine
+    # The policy's `texts` replace built-in texts wherever the bot uses them.
+    if policy_engine is not None:
+        TextMessage.overrides = policy_engine.texts
     llm_provider = get_provider(config.ai)
     dp["llm_provider"] = llm_provider
     # Only drafts fold the transcript into the summary: without a provider

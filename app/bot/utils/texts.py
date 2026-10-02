@@ -15,6 +15,10 @@ class Text(metaclass=ABCMeta):
     Abstract base class for handling text data in different languages.
     """
 
+    # Replacements from the policy's `texts` section, {key: {language: text}},
+    # set once at startup. A key or language missing here keeps the built-in text.
+    overrides: dict[str, dict[str, str]] = {}
+
     def __init__(self, language_code: str) -> None:
         """
         Initializes the Text instance with the specified language code.
@@ -40,7 +44,15 @@ class Text(metaclass=ABCMeta):
         :param code: The code associated with the desired text.
         :return: The text in the current language.
         """
+        override = self.overrides.get(code, {}).get(self.language_code)
+        if override is not None:
+            return override
         return self.data[self.language_code][code]
+
+    @classmethod
+    def keys(cls) -> set[str]:
+        """Every text code defined in any language."""
+        return {code for texts in cls("en").data.values() for code in texts}
 
 
 class TextMessage(Text):
