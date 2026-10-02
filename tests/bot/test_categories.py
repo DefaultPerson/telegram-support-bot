@@ -207,6 +207,9 @@ class _HandlerStorage:
         self.written.add(user_id)
         return first
 
+    async def release_first_message(self, user_id):
+        self.written.discard(user_id)
+
 
 @pytest.fixture()
 def handler(monkeypatch):
@@ -237,7 +240,7 @@ def handler(monkeypatch):
         text_message=SimpleNamespace(get=lambda key: key),
     )
 
-    def send(policy):
+    def send(policy, text="hello", fail=False):
         async def reply(text):
             return SimpleNamespace(delete=no_sleep_delete)
 
@@ -245,9 +248,10 @@ def handler(monkeypatch):
             return None
 
         async def forward(**kwargs):
-            return None
+            if fail:
+                raise RuntimeError("group is unreachable")
 
-        message = SimpleNamespace(bot=_Bot(), text="hello", caption=None, reply=reply, forward=forward)
+        message = SimpleNamespace(bot=_Bot(), text=text, caption=None, reply=reply, forward=forward)
         asyncio.run(private_message.handle_incoming_message(
             message, manager, storage, make_user(), policy_engine=policy, llm_provider=object(),
         ))
@@ -266,3 +270,23 @@ def test_no_categories_means_no_classification(handler):
     handler.send(load_policy_from_dict({}))
     handler.send(None)
     assert [c["classify"] for c in handler.calls] == [False, False]
+
+
+def test_a_suppressed_first_message_leaves_the_classification_to_the_next_one(handler):
+    policy = load_policy_from_dict({
+        "rules": [{"id": "drop", "when": {"keywords_any": ["spam"]},
+                   "actions": [{"type": "suppress_topic_creation"}]}],
+        "ai": {"categories": CATEGORIES},
+    })
+    handler.send(policy, "spam")
+    handler.send(policy, "my payout is late")
+    handler.send(policy, "any news?")
+    assert [c["classify"] for c in handler.calls] == [True, False]
+
+
+def test_an_undelivered_first_message_leaves_the_classification_to_the_next_one(handler):
+    policy = load_policy_from_dict({"ai": {"categories": CATEGORIES}})
+    with pytest.raises(RuntimeError):
+        handler.send(policy, fail=True)
+    handler.send(policy)
+    assert handler.calls == [{"classify": True, "draft": True}]

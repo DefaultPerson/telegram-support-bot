@@ -72,8 +72,9 @@ POLICY_CONFIG_PATH=config/policy.yaml
 
 Matchers: `event_type` (`user_message` | `user_started` | `user_stopped` |
 `topic_created`), `keywords_any`, `regex`, `message_length`, `has_link`,
-`first_message` (true only for the user's very first message), combined with
-`all` / `any`. Actions: `auto_reply`, `set_tag`, `close_topic`, `escalate`,
+`first_message` (true only for the user's very first message; one dropped by
+`suppress_topic_creation` or not delivered to the topic does not count), combined
+with `all` / `any`. Actions: `auto_reply`, `set_tag`, `close_topic`, `escalate`,
 `suppress_group_notify`, `suppress_topic_creation`. See
 `config/policy.example.yaml` for a documented example.
 

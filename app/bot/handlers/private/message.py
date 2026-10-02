@@ -80,12 +80,18 @@ async def handle_incoming_message(
     # Remember that the user has written (drives the `first_message` matcher).
     first_message = await redis.claim_first_message(user_data.id)
 
+    async def release_first_message():
+        """A message that never reaches the topic does not count as the first one."""
+        if first_message:
+            await redis.release_first_message(user_data.id)
+
     # Evaluate declarative policy before forwarding, if enabled.
     decision = None
     if policy_engine is not None:
         decision = policy_engine.evaluate(build_message_context(message, user_data, first_message))
         await apply_auto_replies(decision, message, redis, user_data)
         if decision.suppress_topic_creation:
+            await release_first_message()
             return
 
     async def copy_message_to_topic():
@@ -112,18 +118,22 @@ async def handle_incoming_message(
             )
 
     try:
-        await copy_message_to_topic()
-    except TelegramBadRequest as ex:
-        if "message thread not found" in ex.message:
-            user_data.message_thread_id = await create_forum_topic(
-                message.bot,
-                manager.config,
-                user_data.full_name,
-            )
-            await redis.update_user(user_data.id, user_data)
+        try:
             await copy_message_to_topic()
-        else:
-            raise
+        except TelegramBadRequest as ex:
+            if "message thread not found" in ex.message:
+                user_data.message_thread_id = await create_forum_topic(
+                    message.bot,
+                    manager.config,
+                    user_data.full_name,
+                )
+                await redis.update_user(user_data.id, user_data)
+                await copy_message_to_topic()
+            else:
+                raise
+    except Exception:
+        await release_first_message()
+        raise
 
     # Apply post-forward policy side effects (tags, close, escalate).
     if decision is not None:
