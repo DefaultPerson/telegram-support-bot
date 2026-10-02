@@ -2,6 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from app.bot.handlers.group import ai as group_ai
 from app.bot.handlers.group import callback_query as group_callback
@@ -167,13 +168,15 @@ def test_expired_draft_is_not_marked_sent():
 
 
 class _TopicMessage:
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, error: Exception | None = None) -> None:
         self.text = text
         self.caption = None
         self.message_thread_id = 7
+        self.error = error
 
     async def copy_to(self, chat_id):
-        return None
+        if self.error is not None:
+            raise self.error
 
     async def reply(self, text):
         async def delete():
@@ -191,9 +194,9 @@ def manager_reply(monkeypatch):
     # The last handler of the module is the one that forwards manager messages.
     handler = group_message.router.message.handlers[-1].callback
 
-    def send(text, policy, storage=None):
+    def send(text, policy, storage=None, error=None):
         storage = storage or _Storage()
-        asyncio.run(handler(_TopicMessage(text), manager(), storage, None, policy))
+        asyncio.run(handler(_TopicMessage(text, error), manager(), storage, None, policy))
         return storage
 
     return send
@@ -202,6 +205,16 @@ def manager_reply(monkeypatch):
 def test_manager_reply_marks_the_draft(manager_reply):
     storage = manager_reply("Hi, payouts go out on Fridays.", engine(log_drafts=True))
     assert storage.resolved == [(42, "manager_replied")]
+
+
+@pytest.mark.parametrize("error", [
+    TelegramForbiddenError(method=None, message="Forbidden: bot was blocked by the user"),
+    TelegramBadRequest(method=None, message="Bad Request: chat not found"),
+    RuntimeError("network is down"),
+])
+def test_undelivered_reply_leaves_the_draft_pending(manager_reply, error):
+    storage = manager_reply("Hi, payouts go out on Fridays.", engine(log_drafts=True), error=error)
+    assert storage.resolved == []
 
 
 def test_command_in_topic_is_not_a_reply(manager_reply):

@@ -120,12 +120,14 @@ async def handler(
         return
 
     text = manager.text_message.get("message_sent_to_user")
+    delivered = False
 
     try:
         if not album:
             await message.copy_to(chat_id=user_data.id)
         else:
             await album.copy_to(chat_id=user_data.id)
+        delivered = True
 
     except TelegramAPIError as ex:
         if "blocked" in ex.message:
@@ -137,8 +139,14 @@ async def handler(
     # Record the manager's reply in the conversation transcript (LLM context).
     await redis.append_conversation(user_data.id, "assistant", message.text or message.caption or "")
     # The manager answered in their own words: a pending draft was not used.
-    # Unknown commands also land here and are not answers.
-    if policy_engine is not None and policy_engine.ai.log_drafts and not (message.text or "").startswith("/"):
+    # Unknown commands also land here and are not answers, and an answer the
+    # user never got leaves the draft pending.
+    if (
+        delivered
+        and policy_engine is not None
+        and policy_engine.ai.log_drafts
+        and not (message.text or "").startswith("/")
+    ):
         await redis.resolve_draft(user_data.id, "manager_replied")
 
     # Reply to the edited message with the specified text
