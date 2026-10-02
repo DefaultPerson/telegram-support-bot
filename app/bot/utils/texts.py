@@ -124,6 +124,48 @@ class TextMessage(Text):
                 "draft_expired": "Draft expired",
                 "draft_skipped": "Skipped",
                 "new_user_general": "🆕 New user: {name}",
+                "ai_draft_category": "Category: {category}",
+                "ai_auto_sent_header": "🤖 Auto-reply sent to the user (category {category}):",
+                "category_admin_notice": "New conversation, {category}: {name}\n{link}",
+                "ai_admins_only": "Only admins can do this.",
+                "ai_stats_disabled": "The draft log is off (ai.log_drafts in the policy).",
+                "ai_stats_usage": "Usage: /ai_stats [days]",
+                "ai_stats_empty": "No drafts logged for this period.",
+                "ai_stats_header_all": "<b>AI drafts by category, all time:</b>",
+                "ai_stats_header_days": "<b>AI drafts by category, last {days} days:</b>",
+                "ai_stats_row": (
+                    "{category}: {total} total, sent {sent}, skipped {skipped}, "
+                    "manager replied {manager_replied}, auto {auto_sent}; sent share {rate}"
+                ),
+                "ai_stats_note": "Sent share = sent / (sent + skipped + manager replied).",
+                "no_category": "no category",
+                "ai_auto_no_categories": "No categories are configured (ai.categories in the policy).",
+                "ai_auto_usage": "Usage: /ai_auto [&lt;key&gt; on|off]",
+                "ai_auto_list_header": "<b>Automatic replies by category:</b>",
+                "ai_auto_list_row": "{category} <code>{key}</code>: {mode}; {stats}",
+                "ai_auto_on": "on",
+                "ai_auto_off": "off",
+                "ai_auto_human_only": "human only",
+                "ai_auto_stats": "reviewed {reviewed}, sent {sent}, sent share {rate}",
+                "ai_auto_unknown": "Unknown category: <code>{key}</code>.",
+                "ai_auto_needs_human": (
+                    "{category} needs a human (needs_human: true), so automatic replies "
+                    "cannot be turned on for it."
+                ),
+                "ai_auto_confirm_on": (
+                    "Turn on automatic replies for {category}? Its drafts will be sent "
+                    "to users without review.\n\nStats: {stats}"
+                ),
+                "ai_auto_confirm_off": "Turn off automatic replies for {category}?\n\nStats: {stats}",
+                "ai_auto_warning": (
+                    "⚠️ Below the bar: sent share {rate} (needs {threshold}), "
+                    "reviewed drafts {reviewed} (needs {min_drafts})."
+                ),
+                "ai_auto_confirm": "✅ Confirm",
+                "ai_auto_cancel": "✖️ Cancel",
+                "ai_auto_enabled": "Automatic replies for {category} are on.",
+                "ai_auto_disabled": "Automatic replies for {category} are off.",
+                "ai_auto_cancelled": "Cancelled.",
             },
             "ru": {
                 "select_language": f"👋 <b>Привет</b>, {hbold('{full_name}')}!\n\nВыберите язык:",
@@ -193,5 +235,47 @@ class TextMessage(Text):
                 "draft_expired": "Черновик устарел",
                 "draft_skipped": "Пропущено",
                 "new_user_general": "🆕 Новый пользователь: {name}",
+                "ai_draft_category": "Категория: {category}",
+                "ai_auto_sent_header": "🤖 Пользователю отправлен автоответ (категория {category}):",
+                "category_admin_notice": "Новый диалог, {category}: {name}\n{link}",
+                "ai_admins_only": "Доступно только админам.",
+                "ai_stats_disabled": "Журнал черновиков выключен (ai.log_drafts в политике).",
+                "ai_stats_usage": "Использование: /ai_stats [дней]",
+                "ai_stats_empty": "За этот период черновиков нет.",
+                "ai_stats_header_all": "<b>Черновики ИИ по категориям, за всё время:</b>",
+                "ai_stats_header_days": "<b>Черновики ИИ по категориям, за {days} дн.:</b>",
+                "ai_stats_row": (
+                    "{category}: всего {total}, отправлено {sent}, пропущено {skipped}, "
+                    "ответил менеджер {manager_replied}, автоответ {auto_sent}; доля отправленных {rate}"
+                ),
+                "ai_stats_note": "Доля отправленных = отправлено / (отправлено + пропущено + ответил менеджер).",
+                "no_category": "без категории",
+                "ai_auto_no_categories": "Категории не настроены (ai.categories в политике).",
+                "ai_auto_usage": "Использование: /ai_auto [&lt;ключ&gt; on|off]",
+                "ai_auto_list_header": "<b>Автоответы по категориям:</b>",
+                "ai_auto_list_row": "{category} <code>{key}</code>: {mode}; {stats}",
+                "ai_auto_on": "вкл",
+                "ai_auto_off": "выкл",
+                "ai_auto_human_only": "только человек",
+                "ai_auto_stats": "проверено {reviewed}, отправлено {sent}, доля отправленных {rate}",
+                "ai_auto_unknown": "Неизвестная категория: <code>{key}</code>.",
+                "ai_auto_needs_human": (
+                    "{category} требует человека (needs_human: true), автоответы для неё "
+                    "включить нельзя."
+                ),
+                "ai_auto_confirm_on": (
+                    "Включить автоответы для {category}? Её черновики будут уходить "
+                    "пользователям без проверки.\n\nСтатистика: {stats}"
+                ),
+                "ai_auto_confirm_off": "Выключить автоответы для {category}?\n\nСтатистика: {stats}",
+                "ai_auto_warning": (
+                    "⚠️ Ниже порога: доля отправленных {rate} (нужно {threshold}), "
+                    "проверено черновиков {reviewed} (нужно {min_drafts})."
+                ),
+                "ai_auto_confirm": "✅ Подтвердить",
+                "ai_auto_cancel": "✖️ Отмена",
+                "ai_auto_enabled": "Автоответы для {category} включены.",
+                "ai_auto_disabled": "Автоответы для {category} выключены.",
+                "ai_auto_cancelled": "Отменено.",
             },
         }
