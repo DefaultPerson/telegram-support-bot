@@ -591,8 +591,12 @@ async def run_ai_draft(
             parse_mode=None,
         )
     if posted is not None:
-        # Only this message's buttons may send the draft from now on.
-        await redis.set_ai_draft_message(user_data.id, posted.message_id, draft)
+        # Only this message's buttons may send the draft from now on. If this
+        # fails, the Send/Skip handler records the id on the first press.
+        try:
+            await redis.set_ai_draft_message(user_data.id, posted.message_id, draft)
+        except Exception as ex:  # noqa: BLE001
+            logger.warning("Failed to record the draft message of user %s: %s", user_data.id, ex)
     if previous_message_id:
         await _drop_draft_buttons(message.bot, config.bot.GROUP_ID, previous_message_id)
 

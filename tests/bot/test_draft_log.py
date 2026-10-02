@@ -143,8 +143,9 @@ def manager(admin_id=ADMIN):
 
 
 class _CallbackMessage:
-    def __init__(self, message_id: int) -> None:
+    def __init__(self, message_id: int, text: str | None = None) -> None:
         self.message_id = message_id
+        self.text = text
         self.buttons_removed = False
         self.deleted = False
 
@@ -156,10 +157,12 @@ class _CallbackMessage:
 
 
 class _Call:
-    def __init__(self, data: str, message_id: int = 101, error: Exception | None = None) -> None:
+    def __init__(
+            self, data: str, message_id: int = 101, error: Exception | None = None, text: str | None = None,
+    ) -> None:
         self.data = data
         self.bot = _Bot(error)
-        self.message = _CallbackMessage(message_id)
+        self.message = _CallbackMessage(message_id, text)
         self.answers: list = []
         self.alerts: list = []
 
@@ -235,6 +238,37 @@ def test_draft_still_being_posted_is_not_sent_by_old_buttons():
     call = press(_Call("ai:send:42", message_id=101), storage)
     assert call.bot.sent == []
     assert storage.draft == "Newest draft"
+
+
+def test_unrecorded_draft_message_is_recorded_on_press():
+    # The draft was posted, but storing its message id failed.
+    storage = _Storage(draft="Newest draft", message_id=0)
+    call = press(_Call("ai:send:42", message_id=101, text="AI draft\n\nNewest draft"), storage)
+
+    assert [m["text"] for m in call.bot.sent] == ["Newest draft"]
+    assert storage.resolved == [(42, "sent")]
+
+
+def test_unrecorded_draft_is_kept_when_another_message_is_pressed():
+    storage = _Storage(draft="Newest draft", message_id=0)
+    call = press(_Call("ai:skip:42", message_id=100, text="AI draft\n\nOlder draft"), storage)
+
+    assert call.answers == ["draft_stale {category}{days}{rate}"]
+    assert (storage.draft, storage.message_id, storage.resolved) == ("Newest draft", 0, [])
+
+
+def test_failing_to_record_the_draft_message_is_only_logged(caplog):
+    class _FailingStorage(_Storage):
+        async def set_ai_draft_message(self, user_id, message_id, text):
+            raise ConnectionError("connection reset")
+
+    storage = _FailingStorage(draft="First draft.", message_id=50)
+    bot = _Bot()
+    draft(storage, engine(), "Second draft.", bot)
+
+    assert storage.message_id == 0
+    assert bot.edited == [{"chat_id": -100, "message_id": 50, "reply_markup": None}]
+    assert "Failed to record the draft message" in caplog.text
 
 
 @pytest.mark.parametrize("message_id", [None, 101])
