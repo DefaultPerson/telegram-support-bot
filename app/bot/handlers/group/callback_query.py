@@ -20,6 +20,11 @@ router.callback_query.filter(
 )
 
 
+def _shows_draft(message, text: str) -> bool:
+    """Whether a draft message (header, blank line, draft) shows this draft text."""
+    return (message.text or "").rstrip().endswith("\n\n" + text.rstrip())
+
+
 @router.callback_query(F.data.startswith("ai:"))
 async def ai_draft_callback(
         call: CallbackQuery,
@@ -46,6 +51,10 @@ async def ai_draft_callback(
         return
 
     draft = await redis.get_ai_draft(user_id)
+    if draft is not None and draft[1] == 0 and _shows_draft(call.message, draft[0]):
+        # The draft was posted, but its message id was never recorded.
+        await redis.set_ai_draft_message(user_id, call.message.message_id, draft[0])
+        draft = (draft[0], call.message.message_id)
     # A newer draft replaced the one this message shows: its buttons must not
     # send or drop the newer one. Drafts stored without a message id act as before.
     if draft is not None and draft[1] is not None and draft[1] != call.message.message_id:
