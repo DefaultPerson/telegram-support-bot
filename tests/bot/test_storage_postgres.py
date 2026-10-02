@@ -7,6 +7,7 @@ Every test works in a schema of its own and drops it afterwards.
 """
 
 import asyncio
+import logging
 import os
 import uuid
 
@@ -459,5 +460,34 @@ def test_trim_keeps_messages_not_in_the_summary():
         for n in range(total):
             await storage.append_conversation(23, "user", f"turn {n}")
         assert await contents(23) == [f"turn {n}" for n in range(5, total)]
+
+    run(scenario)
+
+
+def test_trim_hard_cap_drops_even_unsummarized_messages(caplog):
+    async def scenario(pool, storage):
+        keeping = RedisStorage(pool, keep_unsummarized=True)
+        cap = RedisStorage.CONV_HARD_MAX
+
+        async def contents(user_id):
+            return [row["content"] for row in await keeping.get_conversation_since(user_id, 0, 0)]
+
+        # Nothing folded: the oldest go past the cap, each one with a warning.
+        with caplog.at_level(logging.WARNING, logger="app.bot.utils.redis.redis"):
+            for n in range(cap + 3):
+                await keeping.append_conversation(25, "user", f"turn {n}")
+        assert await contents(25) == [f"turn {n}" for n in range(3, cap + 3)]
+        lost = [r.getMessage() for r in caplog.records if "before the summary" in r.getMessage()]
+        assert len(lost) == 3
+        assert all(f"user 25 is over {cap} messages: 1 dropped" in m for m in lost)
+
+        # Dropping messages already in the summary is no loss: no warning.
+        caplog.clear()
+        rows = await keeping.get_conversation_since(25, 0, 0)
+        await keeping.set_conversation_summary(25, "summary", rows[1]["id"])
+        with caplog.at_level(logging.WARNING, logger="app.bot.utils.redis.redis"):
+            await keeping.append_conversation(25, "user", "one more")
+        assert await contents(25) == [f"turn {n}" for n in range(5, cap + 3)] + ["one more"]
+        assert caplog.records == []
 
     run(scenario)

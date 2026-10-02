@@ -164,7 +164,8 @@ or asked for, the links and data the customer sent, and the open questions, in
 the language of the conversation. It is stored per user in PostgreSQL with the
 last turn it covers. While the option is on and an AI provider is set, the
 stored transcript drops a turn past its 40-turn limit only once the summary has
-taken it in. A failed or timed-out summary request (`AI_TOTAL_TIMEOUT_S` applies
+taken it in; past 200 turns the oldest go anyway, with a warning in the log
+saying how many the summary missed. A failed or timed-out summary request (`AI_TOTAL_TIMEOUT_S` applies
 to it too) is logged, the draft gets the window alone, and the stored summary
 stays as it was.
 
