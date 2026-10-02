@@ -94,7 +94,13 @@ async def handler(message: Message) -> None:
 
 @router.message(F.media_group_id, F.from_user[F.is_bot.is_(False)])
 @router.message(F.media_group_id.is_(None), F.from_user[F.is_bot.is_(False)])
-async def handler(message: Message, manager: Manager, redis: RedisStorage, album: Optional[Album] = None) -> None:
+async def handler(
+        message: Message,
+        manager: Manager,
+        redis: RedisStorage,
+        album: Optional[Album] = None,
+        policy_engine: PolicyEngine | None = None,
+) -> None:
     """
     Handles user messages and sends them to the respective user.
     If silent mode is enabled for the user, the messages are ignored.
@@ -103,6 +109,7 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage, album
     :param manager: Manager object.
     :param redis: RedisStorage object.
     :param album: Album object or None.
+    :param policy_engine: Optional policy engine (None when disabled).
     :return: None
     """
     user_data = await redis.get_by_message_thread_id(message.message_thread_id)
@@ -129,6 +136,10 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage, album
 
     # Record the manager's reply in the conversation transcript (LLM context).
     await redis.append_conversation(user_data.id, "assistant", message.text or message.caption or "")
+    # The manager answered in their own words: a pending draft was not used.
+    # Unknown commands also land here and are not answers.
+    if policy_engine is not None and policy_engine.ai.log_drafts and not (message.text or "").startswith("/"):
+        await redis.resolve_draft(user_data.id, "manager_replied")
 
     # Reply to the edited message with the specified text
     msg = await message.reply(text)

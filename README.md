@@ -108,3 +108,30 @@ When enabled, the first message of a conversation is classified and a draft
 reply is posted into the topic with **Send / Skip** buttons. Install the extra
 dependency with `pip install -r requirements-ai.txt` (or build the image with
 `--build-arg INSTALL_AI=1`).
+
+### Draft log, categories and automatic replies
+
+These options live in the `ai` section of the policy file (so they need
+`POLICY_ENABLED=true`) and are all off by default.
+
+| Option | Default | Description |
+|---|---|---|
+| `log_drafts` | `false` | Record every draft and its outcome in PostgreSQL: `sent` (Send button), `skipped` (Skip), `manager_replied` (the manager wrote to the user in the topic while the draft was pending), `superseded` (a newer draft for the same user), `auto_sent` (automatic reply) |
+| `categories` | `[]` | Classify the user's first message with a separate short LLM request. Each item: `key`, `title`, `icon`, `needs_human`, `notify_admins`. The icon goes before the topic name, the category is shown in the draft header and stored in the log, and `notify_admins` messages every admin in `BOT_DEV_IDS` with a link to the topic. An unclear answer maps to `other` when that key exists |
+| `auto_threshold` | `0.95` | `/ai_auto` warns before enabling a category whose share of sent drafts is lower |
+| `auto_min_drafts` | `20` | ... or which has fewer reviewed drafts than this |
+
+Admin commands in the support group (admins are `BOT_DEV_IDS`):
+
+- `/ai_stats [days]` — per category: total drafts, sent, skipped, manager
+  replied, automatic, and the share of sent drafts. The share counts reviewed
+  drafts only: sent / (sent + skipped + manager replied).
+- `/ai_auto` — every category with its automatic-reply mode and stats.
+- `/ai_auto <key> on|off` — asks for confirmation with the category's stats
+  (and a warning below the bar); the mode changes only when an admin presses
+  **Confirm**. Categories with `needs_human: true` cannot be turned on.
+
+With the mode on, a draft for a conversation of that category goes to the user
+right away, as if the manager had pressed Send, and the topic gets a copy marked
+as an automatic reply. Silent mode (`/silent`) keeps it a normal draft. Modes are
+stored in PostgreSQL and are all off until an admin turns one on.

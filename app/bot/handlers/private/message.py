@@ -8,6 +8,7 @@ from aiogram.types import Message
 from app.bot.llm import LLMProvider
 from app.bot.manager import Manager
 from app.bot.policy import PolicyEngine
+from app.bot.policy.schema import AISection
 from app.bot.types.album import Album
 from app.bot.utils.create_forum_topic import (
     create_forum_topic,
@@ -18,7 +19,7 @@ from app.bot.utils.policy_runtime import (
     apply_post_forward,
     build_message_context,
     message_text,
-    run_ai_draft,
+    run_ai_layer,
 )
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import UserData
@@ -128,14 +129,19 @@ async def handle_incoming_message(
     if decision is not None:
         await apply_post_forward(decision, message, redis, user_data, manager.config)
 
-    # Offer an AI-drafted reply to the manager, unless policy already auto-answered.
-    if llm_provider is not None and not (decision and decision.suppresses_draft):
-        max_context = policy_engine.ai.max_context_messages if policy_engine else 12
-        asyncio.create_task(
-            run_ai_draft(
-                llm_provider, manager.config, message, redis, user_data, max_context, album
+    # Offer an AI-drafted reply to the manager, unless policy already auto-answered,
+    # and classify the first message when categories are configured.
+    if llm_provider is not None:
+        ai = policy_engine.ai if policy_engine else AISection()
+        draft = not (decision and decision.suppresses_draft)
+        classify = first_message and bool(ai.categories)
+        if draft or classify:
+            asyncio.create_task(
+                run_ai_layer(
+                    llm_provider, manager.config, message, redis, user_data, ai, album,
+                    classify=classify, draft=draft,
+                )
             )
-        )
 
     # Send a confirmation message to the user
     text = manager.text_message.get("message_sent")

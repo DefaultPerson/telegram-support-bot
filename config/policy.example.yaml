@@ -79,3 +79,33 @@ ai:
   enabled: false
   system_prompt_path: config/system_prompt.txt
   max_context_messages: 12
+  # Record every draft and what became of it (sent, skipped, manager_replied,
+  # superseded, auto_sent) for the /ai_stats admin command.
+  log_drafts: false
+  # Classify the user's first message into one of these categories with a
+  # separate short LLM request. Empty (the default): no classification.
+  #   key:           short id (up to 40 characters); an unclear answer maps to
+  #                  "other" when such a key exists, otherwise to no category
+  #   icon:          put before the topic name
+  #   needs_human:   automatic replies can never be turned on for it
+  #   notify_admins: message every admin in BOT_DEV_IDS with a link to the topic
+  categories: []
+  # categories:
+  #   - key: billing
+  #     title: Billing and payments
+  #     icon: "💳"
+  #   - key: bug
+  #     title: Bug report
+  #     icon: "🐞"
+  #   - key: account
+  #     title: Account access or security
+  #     icon: "🔐"
+  #     needs_human: true
+  #     notify_admins: true
+  #   - key: other
+  #     title: Anything else
+  # /ai_auto warns before turning automatic replies on for a category whose
+  # share of sent drafts is below auto_threshold or which has fewer reviewed
+  # drafts than auto_min_drafts. The admin can still confirm.
+  auto_threshold: 0.95
+  auto_min_drafts: 20
