@@ -111,6 +111,16 @@ ai:
   # drafts than auto_min_drafts. The admin can still confirm.
   auto_threshold: 0.95
   auto_min_drafts: 20
+  # Long conversations: turns older than max_context_messages reach the draft as
+  # a running summary instead of being dropped. Once fold_batch of them are not
+  # in the summary yet, a separate request to the same model folds them into it
+  # (at most max_chars characters, in the language of the conversation); fewer
+  # go to the model verbatim. While it is on, the stored transcript keeps every
+  # turn until the summary has taken it in.
+  summary:
+    enabled: false
+    fold_batch: 8
+    max_chars: 1200
 
 # Optional reminders in the user's topic when a reply is overdue, e.g.
 # "⏰ The user has been waiting for a reply for 3 h". A wait starts with the
