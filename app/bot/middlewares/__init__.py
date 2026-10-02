@@ -15,13 +15,16 @@ def register_middlewares(dp: Dispatcher, **kwargs) -> None:
     Args:
         dp (Dispatcher): The Aiogram Dispatcher instance.
         **kwargs: Expects ``pool`` (asyncpg pool), ``broadcast_storage``,
-            ``broadcast_service`` and ``broadcast_scheduler``.
+            ``broadcast_service`` and ``broadcast_scheduler``; optional
+            ``keep_unsummarized`` (see :class:`RedisStorage`).
 
     Returns:
         None
     """
     # Register RedisMiddleware (user-layer storage over the PostgreSQL pool)
-    dp.update.outer_middleware.register(RedisMiddleware(kwargs["pool"]))
+    dp.update.outer_middleware.register(
+        RedisMiddleware(kwargs["pool"], kwargs.get("keep_unsummarized", False))
+    )
     # Register ManagerMiddleware
     dp.update.outer_middleware.register(ManagerMiddleware())
 

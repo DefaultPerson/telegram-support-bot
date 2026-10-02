@@ -16,7 +16,7 @@ from aiogram.utils.markdown import hlink
 from app.bot.llm import LLMProvider
 from app.bot.policy import Decision, EvalContext
 from app.bot.policy.context import EVENT_USER_MESSAGE
-from app.bot.policy.schema import AICategory, AISection
+from app.bot.policy.schema import AICategory, AISection, AISummary
 from app.bot.types.album import Album
 from app.bot.utils.admins import notify_admins, topic_link
 from app.bot.utils.redact import redact
@@ -39,6 +39,21 @@ _CLASSIFY_PROMPT = (
     "categories below. Answer with the category key only, nothing else.\n\n"
     "Categories (key: description):\n{categories}"
 )
+
+_SUMMARY_PROMPT = (
+    "You keep a running summary of a customer support conversation. Merge the "
+    "previous summary and the new messages below into one updated summary of at "
+    "most {max_chars} characters, in the language of the conversation. Keep the "
+    "facts: what the customer wants, what support has already answered, promised "
+    "or asked for, links and data the customer sent, and the questions still "
+    "open. Only what the messages say: do not invent or guess anything. Answer "
+    "with the summary only."
+)
+
+_SUMMARY_CONTEXT = "Summary of the earlier part of the conversation:\n{summary}"
+
+# How transcript roles read in the text sent for summarizing.
+_SPEAKERS = {"user": "Customer", "assistant": "Support"}
 
 # Telegram's limit on a forum topic name.
 _TOPIC_NAME_MAX = 128
@@ -381,6 +396,67 @@ async def _auto_send(
     return True
 
 
+async def _fold_summary(
+    provider: LLMProvider,
+    config: Config,
+    settings: AISummary,
+    summary: str | None,
+    turns: list[dict],
+) -> str | None:
+    """Fold the turns into the summary with a separate request. None on failure."""
+    lines = "\n".join(f"{_SPEAKERS.get(t['role'], t['role'])}: {t['content']}" for t in turns)
+    messages = [
+        {"role": "system", "content": _SUMMARY_PROMPT.format(max_chars=settings.max_chars)},
+        {"role": "user", "content": f"Previous summary:\n{summary or '(none)'}\n\nNew messages:\n{lines}"},
+    ]
+    try:
+        answer = await asyncio.wait_for(
+            provider.draft_reply(messages),
+            timeout=config.ai.total_timeout_s,
+        )
+    except Exception as ex:  # noqa: BLE001 - the draft goes on without the summary
+        logger.warning("AI summary failed: %s: %s", type(ex).__name__, redact(str(ex)))
+        return None
+    answer = (answer or "").strip()
+    if not answer:
+        logger.warning("AI summary came back empty.")
+        return None
+    return answer[: settings.max_chars]
+
+
+async def _summarized_history(
+    provider: LLMProvider,
+    config: Config,
+    redis: RedisStorage,
+    user_id: int,
+    settings: AISummary,
+    window: int,
+) -> tuple[str | None, list[dict]]:
+    """
+    The summary and the turns for a draft with ai.summary on. Turns older than
+    the window and not in the summary yet are folded into it once fold_batch of
+    them have piled up; fewer go verbatim before the window. If folding fails,
+    the draft gets the window alone, as with the summary off.
+    """
+    stored = await redis.get_conversation_summary(user_id)
+    summary, covered_id = stored or (None, 0)
+    rows = await redis.get_conversation_since(user_id, covered_id, window)
+    split = max(len(rows) - window, 0)
+    older, recent = rows[:split], rows[split:]
+
+    if len(older) >= settings.fold_batch:
+        folded = await _fold_summary(provider, config, settings, summary, older)
+        if folded is None:
+            summary, older = None, []
+        else:
+            try:
+                await redis.set_conversation_summary(user_id, folded, older[-1]["id"])
+            except Exception as ex:  # noqa: BLE001 - the next draft folds them again
+                logger.warning("Failed to store the summary of user %s: %s", user_id, ex)
+            summary, older = folded, []
+    return summary, [{"role": t["role"], "content": t["content"]} for t in older + recent]
+
+
 async def run_ai_draft(
     provider: LLMProvider,
     config: Config,
@@ -411,7 +487,13 @@ async def run_ai_draft(
     if data_urls is None:
         data_urls = await _collect_images(config, message, album)
 
-    history = await redis.get_conversation(user_data.id, max_context)
+    summary = None
+    if ai.summary.enabled:
+        summary, history = await _summarized_history(
+            provider, config, redis, user_data.id, ai.summary, max_context
+        )
+    else:
+        history = await redis.get_conversation(user_data.id, max_context)
     if not history:
         text = message_text(message)
         if not text.strip() and not data_urls:
@@ -426,6 +508,8 @@ async def run_ai_draft(
     system_prompt = _resolve_system_prompt(config.ai)
     system_prompt += f"\n\nIf the user's language is unclear, reply in {lang_name}."
     messages = [{"role": "system", "content": system_prompt}, *history]
+    if summary:
+        messages.insert(1, {"role": "system", "content": _SUMMARY_CONTEXT.format(summary=summary)})
     if data_urls:
         messages = _with_images(messages, message_text(message), data_urls)
 

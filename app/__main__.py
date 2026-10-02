@@ -146,7 +146,15 @@ async def main() -> None:
         except Exception as ex:  # noqa: BLE001
             logging.error("Failed to load policy; continuing without it: %s", ex)
     dp["policy_engine"] = policy_engine
-    dp["llm_provider"] = get_provider(config.ai)
+    llm_provider = get_provider(config.ai)
+    dp["llm_provider"] = llm_provider
+    # Only drafts fold the transcript into the summary: without a provider
+    # nothing would ever be folded, so the trim stays as it was.
+    keep_unsummarized = (
+        llm_provider is not None
+        and policy_engine is not None
+        and policy_engine.ai.summary.enabled
+    )
 
     # Register startup handler
     dp.startup.register(on_startup)
@@ -162,6 +170,7 @@ async def main() -> None:
         broadcast_storage=broadcast_storage,
         broadcast_service=broadcast_service,
         broadcast_scheduler=broadcast_scheduler,
+        keep_unsummarized=keep_unsummarized,
     )
 
     # Start the bot. Keep pending updates so messages sent while the bot was

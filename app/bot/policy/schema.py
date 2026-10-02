@@ -58,6 +58,18 @@ class AICategory(BaseModel):
     notify_admins: bool = False
 
 
+class AISummary(BaseModel):
+    """Fold the transcript older than the draft window into a running summary."""
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    # Older turns are folded once this many are left out of the window and the
+    # summary; fewer go to the model verbatim.
+    fold_batch: int = Field(default=8, ge=1)
+    # Length ceiling of the summary, in characters.
+    max_chars: int = Field(default=1200, ge=100)
+
+
 class AISection(BaseModel):
     """LLM-related options. The engine never executes actions from here."""
     model_config = ConfigDict(extra="forbid")
@@ -73,6 +85,8 @@ class AISection(BaseModel):
     # drafts or with fewer reviewed drafts than auto_min_drafts.
     auto_threshold: float = 0.95
     auto_min_drafts: int = 20
+    # Turns older than max_context_messages reach the draft as a summary.
+    summary: AISummary = Field(default_factory=AISummary)
 
     def category(self, key: str | None) -> AICategory | None:
         """Return the configured category with this key, if any."""
