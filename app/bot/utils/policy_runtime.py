@@ -50,6 +50,13 @@ _SUMMARY_PROMPT = (
     "with the summary only."
 )
 
+_CANNED_PROMPT = (
+    "Canned replies, each under its key in square brackets. If one of them fits "
+    "the user's message, answer with its text exactly as written, word for word, "
+    "without the key and with nothing added. Otherwise write your own reply.\n\n"
+    "{replies}"
+)
+
 _SUMMARY_CONTEXT = "Summary of the earlier part of the conversation:\n{summary}"
 
 # How transcript roles read in the text sent for summarizing.
@@ -372,12 +379,15 @@ async def _auto_send(
     redis: RedisStorage,
     user_data: UserData,
     ai: AISection,
-    category: str,
+    category: str | None,
     draft: str,
-    txt: TextMessage,
+    header: str,
     reminders: bool = False,
 ) -> bool:
-    """Send the draft straight to the user, as the Send button would. False if it did not go out."""
+    """
+    Send the draft straight to the user, as the Send button would, and post a
+    copy under ``header`` into the topic. False if it did not go out.
+    """
     try:
         await message.bot.send_message(chat_id=user_data.id, text=draft, parse_mode=None)
     except TelegramAPIError as ex:
@@ -390,7 +400,6 @@ async def _auto_send(
     await _log_draft(redis, ai, user_data, category, draft, "auto_sent")
     if reminders:
         await end_reply_wait(redis, user_data.id)
-    header = txt.get("ai_auto_sent_header").format(category=category_label(ai, category))
     with suppress(TelegramBadRequest):
         await message.bot.send_message(
             chat_id=config.bot.GROUP_ID,
@@ -491,8 +500,9 @@ async def run_ai_draft(
     Draft a suggested reply based on the conversation so far and post it into
     the user's topic with Send/Skip buttons. Best-effort: failures are logged.
 
-    With the auto-reply mode on for the user's category the draft goes to the
-    user right away and the topic only gets a copy.
+    A draft that repeats one of ai.canned_replies, or any draft with the
+    auto-reply mode on for the user's category, goes to the user right away
+    and the topic only gets a copy.
     ``reminders``: such an automatic reply ends the user's wait for a reply.
     """
     if user_data.message_thread_id is None:
@@ -524,6 +534,9 @@ async def run_ai_draft(
     txt = TextMessage(lang)
     system_prompt = _resolve_system_prompt(config.ai)
     system_prompt += f"\n\nIf the user's language is unclear, reply in {lang_name}."
+    if ai.canned_replies:
+        replies = "\n\n".join(f"[{r.key}]\n{r.text(lang)}" for r in ai.canned_replies)
+        system_prompt += "\n\n" + _CANNED_PROMPT.format(replies=replies)
     messages = [{"role": "system", "content": system_prompt}, *history]
     if summary:
         messages.insert(1, {"role": "system", "content": _SUMMARY_CONTEXT.format(summary=summary)})
@@ -553,19 +566,35 @@ async def run_ai_draft(
         except Exception as ex:  # noqa: BLE001
             logger.warning("Failed to read the category of user %s: %s", user_data.id, ex)
 
+    # A canned reply is pre-approved, whatever the category. If it fails to go
+    # out, it stays a draft for the manager. Silent mode means nothing reaches
+    # the user.
+    canned = None if user_data.message_silent_mode else ai.canned_reply(draft)
+    if canned is not None:
+        header = txt.get("ai_canned_sent_header").format(key=canned.key)
+        if await _auto_send(config, message, redis, user_data, ai, category, draft, header, reminders):
+            return
+
     # needs_human is checked again here: the config may have changed after the
-    # mode was switched on. Silent mode means nothing reaches the user.
+    # mode was switched on.
     configured = ai.category(category)
-    if configured is not None and not configured.needs_human and not user_data.message_silent_mode:
+    if (
+        canned is None
+        and configured is not None
+        and not configured.needs_human
+        and not user_data.message_silent_mode
+    ):
         try:
             auto = await redis.get_auto_mode(configured.key)
         except Exception as ex:  # noqa: BLE001
             logger.warning("Failed to read the auto-reply mode of %s: %s", configured.key, ex)
             auto = False
-        if auto and await _auto_send(
-            config, message, redis, user_data, ai, configured.key, draft, txt, reminders,
-        ):
-            return
+        if auto:
+            header = txt.get("ai_auto_sent_header").format(category=category_label(ai, configured.key))
+            if await _auto_send(
+                config, message, redis, user_data, ai, configured.key, draft, header, reminders,
+            ):
+                return
 
     previous_message_id = await redis.set_ai_draft(user_data.id, draft)
     await _log_draft(redis, ai, user_data, category, draft, "pending")

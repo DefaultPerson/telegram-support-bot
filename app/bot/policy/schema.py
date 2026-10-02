@@ -61,6 +61,38 @@ class AICategory(BaseModel):
     notify_admins: bool = False
 
 
+def normalize_reply(text: str) -> str:
+    """A reply as compared with canned replies: spacing, case, ё and a final . or ! do not count."""
+    text = " ".join(text.split()).lower().replace("ё", "е")
+    return text.rstrip(".!").rstrip()
+
+
+class AICannedReply(BaseModel):
+    """A pre-approved reply: a draft with exactly this text goes to the user without review."""
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")
+    ru: str | None = None
+    en: str | None = None
+
+    @model_validator(mode="after")
+    def _has_text(self) -> "AICannedReply":
+        texts = [text for text in (self.ru, self.en) if text is not None]
+        if not texts or not all(normalize_reply(text) for text in texts):
+            raise ValueError(f"canned reply {self.key}: needs a non-empty ru or en text")
+        return self
+
+    def text(self, language: str) -> str:
+        """The text in this language, else in the other one."""
+        own = {"ru": self.ru, "en": self.en}.get(language)
+        return own or self.en or self.ru or ""
+
+    def matches(self, draft: str) -> bool:
+        """True when the draft is this reply in either language."""
+        drafted = normalize_reply(draft)
+        return any(text is not None and normalize_reply(text) == drafted for text in (self.ru, self.en))
+
+
 class AISummary(BaseModel):
     """Fold the transcript older than the draft window into a running summary."""
     model_config = ConfigDict(extra="forbid")
@@ -90,10 +122,25 @@ class AISection(BaseModel):
     auto_min_drafts: int = 20
     # Turns older than max_context_messages reach the draft as a summary.
     summary: AISummary = Field(default_factory=AISummary)
+    # Empty: every draft waits for the manager (or the category's auto mode).
+    canned_replies: list[AICannedReply] = Field(default_factory=list)
+
+    @field_validator("canned_replies")
+    @classmethod
+    def _unique_canned_keys(cls, value: list[AICannedReply]) -> list[AICannedReply]:
+        keys = [reply.key for reply in value]
+        repeated = sorted({key for key in keys if keys.count(key) > 1})
+        if repeated:
+            raise ValueError(f"canned_replies: repeated keys {repeated}")
+        return value
 
     def category(self, key: str | None) -> AICategory | None:
         """Return the configured category with this key, if any."""
         return next((c for c in self.categories if c.key == key), None)
+
+    def canned_reply(self, draft: str) -> AICannedReply | None:
+        """The canned reply the draft repeats, if any."""
+        return next((r for r in self.canned_replies if r.matches(draft)), None)
 
 
 class RemindersSection(BaseModel):

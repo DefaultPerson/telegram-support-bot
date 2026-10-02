@@ -6,6 +6,7 @@ from aiogram.exceptions import TelegramForbiddenError
 
 from app.bot.handlers.group import ai as group_ai
 from app.bot.policy import load_policy_from_dict
+from app.bot.policy.schema import AICannedReply, normalize_reply
 from app.bot.utils.policy_runtime import run_ai_draft
 from app.bot.utils.redis.models import UserData
 
@@ -36,6 +37,7 @@ class _Storage:
         self.logged: list[tuple] = []
         self.conversation: list[tuple] = []
         self.draft = "older draft"
+        self.waits_ended: list[int] = []
 
     async def get_user_category(self, user_id):
         return self.category
@@ -68,6 +70,9 @@ class _Storage:
     async def log_draft(self, user_id, thread_id, category, text, outcome="pending"):
         self.logged.append((category, outcome))
 
+    async def end_reply_wait(self, user_id):
+        self.waits_ended.append(user_id)
+
 
 class _Bot:
     def __init__(self, blocked=False) -> None:
@@ -81,28 +86,37 @@ class _Bot:
 
 
 class _Provider:
+    def __init__(self, answer="Payouts go out on Fridays.") -> None:
+        self.answer = answer
+        self.messages: list[dict] = []
+
     async def draft_reply(self, messages):
-        return "Payouts go out on Fridays."
+        self.messages = messages
+        return self.answer
 
 
-def make_user(silent=False) -> UserData:
+def make_user(silent=False, language="en") -> UserData:
     return UserData(
         message_thread_id=7, message_silent_id=None, message_silent_mode=silent,
-        id=42, full_name="User", username="-", language_code="en",
+        id=42, full_name="User", username="-", language_code=language,
     )
 
 
-def draft(storage, policy, bot=None, silent=False):
+def draft(storage, policy, bot=None, silent=False, provider=None, language="en", reminders=False):
     from app.config import AIConfig
 
     bot = bot or _Bot()
+    provider = provider or _Provider()
     ai = AIConfig(
         PROVIDER="openai_compatible", BASE_URL="", API_KEY="k", MODEL="m",
         SYSTEM_PROMPT_PATH="", TIMEOUT_S=5, VISION=False,
     )
     config = SimpleNamespace(ai=ai, bot=SimpleNamespace(GROUP_ID=GROUP, DEV_IDS=[ADMIN]))
     message = SimpleNamespace(bot=bot, text="where is my payout?", caption=None)
-    asyncio.run(run_ai_draft(_Provider(), config, message, storage, make_user(silent), 12, ai=policy.ai))
+    asyncio.run(run_ai_draft(
+        provider, config, message, storage, make_user(silent, language), 12,
+        ai=policy.ai, reminders=reminders,
+    ))
     return bot
 
 
@@ -144,6 +158,151 @@ def test_failed_auto_send_falls_back_to_a_draft():
     assert [m["chat_id"] for m in bot.sent] == [GROUP]
     assert "reply_markup" in bot.sent[0]
     assert storage.logged == [("payout", "pending")]
+
+
+CANNED = [
+    {"key": "payday", "en": "Payouts go out on Fridays.", "ru": "Всё выплачиваем по пятницам."},
+    {"key": "wait", "en": "Please wait, a manager will reply soon."},
+]
+
+
+def test_canned_replies_are_off_by_default():
+    assert load_policy_from_dict({}).ai.canned_replies == []
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("  Ёлка   стоит.\n", "елка стоит"),
+    ("Done!!", "done"),
+    ("Done ?", "done ?"),
+    ("Done. ", "done"),
+])
+def test_normalize_reply(text, expected):
+    assert normalize_reply(text) == expected
+
+
+@pytest.mark.parametrize("reply", [
+    {"key": "выплаты", "en": "Hi"},
+    {"key": "k" * 41, "en": "Hi"},
+    {"key": "hi"},
+    {"key": "hi", "en": "  "},
+    {"key": "hi", "en": "Hi", "ru": "!"},
+    {"key": "hi", "de": "Hallo"},
+])
+def test_bad_canned_reply_is_rejected(reply):
+    with pytest.raises(ValueError):
+        AICannedReply(**reply)
+
+
+def test_repeated_canned_keys_are_rejected():
+    with pytest.raises(ValueError):
+        engine(canned_replies=[{"key": "hi", "en": "Hi"}, {"key": "hi", "ru": "Привет"}])
+
+
+@pytest.mark.parametrize("answer", [
+    "Payouts go out on Fridays.",
+    "  payouts  go out\non FRIDAYS!\n",
+    "Payouts go out on Fridays",
+    "Все выплачиваем по пятницам",      # the other language, ё written as е
+])
+def test_canned_reply_is_sent_right_away(answer):
+    storage = _Storage()
+
+    bot = draft(storage, engine(canned_replies=CANNED), provider=_Provider(answer), reminders=True)
+
+    to_user, to_topic = bot.sent
+    assert to_user == {"chat_id": 42, "text": answer, "parse_mode": None}
+    assert to_topic["message_thread_id"] == 7
+    assert to_topic["text"].startswith("🤖 Auto-reply sent to the user (canned reply payday):")
+    assert "reply_markup" not in to_topic
+    assert storage.logged == [(None, "auto_sent")]
+    assert storage.conversation == [("assistant", answer)]
+    assert storage.draft is None
+    assert storage.waits_ended == [42]
+
+
+def test_canned_reply_ignores_the_category():
+    # needs_human and the mode being off do not hold back a pre-approved text.
+    storage = _Storage(category="refund")
+
+    bot = draft(storage, engine(canned_replies=CANNED))
+
+    assert [m["chat_id"] for m in bot.sent] == [42, GROUP]
+    assert storage.logged == [("refund", "auto_sent")]
+
+
+def test_canned_reply_header_is_localized():
+    bot = draft(_Storage(), engine(canned_replies=CANNED), provider=_Provider("Всё выплачиваем по пятницам."),
+                language="ru")
+
+    assert bot.sent[1]["text"].startswith("🤖 Пользователю отправлен автоответ (заготовка payday):")
+
+
+@pytest.mark.parametrize("answer", [
+    "Payouts go out on Fridays. Anything else?",
+    "Payouts go out on Mondays.",
+    "Payouts go out on Fridays?",
+])
+def test_other_text_stays_a_draft(answer):
+    storage = _Storage()
+
+    bot = draft(storage, engine(canned_replies=CANNED), provider=_Provider(answer))
+
+    assert [m["chat_id"] for m in bot.sent] == [GROUP]
+    assert "reply_markup" in bot.sent[0]
+    assert storage.logged == [(None, "pending")]
+
+
+def test_other_text_still_follows_the_category_mode():
+    storage = _Storage(category="payout", auto=["payout"])
+
+    bot = draft(storage, engine(canned_replies=CANNED), provider=_Provider("Fridays, usually."))
+
+    assert [m["chat_id"] for m in bot.sent] == [42, GROUP]
+    assert "category" in bot.sent[1]["text"]
+    assert storage.logged == [("payout", "auto_sent")]
+
+
+def test_canned_reply_waits_in_silent_mode():
+    storage = _Storage()
+
+    bot = draft(storage, engine(canned_replies=CANNED), silent=True)
+
+    assert [m["chat_id"] for m in bot.sent] == [GROUP]
+    assert "reply_markup" in bot.sent[0]
+    assert storage.logged == [(None, "pending")]
+
+
+def test_failed_canned_reply_falls_back_to_a_draft():
+    # The category's auto mode is not tried a second time either.
+    storage = _Storage(category="payout", auto=["payout"])
+
+    bot = draft(storage, engine(canned_replies=CANNED), bot=_Bot(blocked=True))
+
+    assert [m["chat_id"] for m in bot.sent] == [GROUP]
+    assert "reply_markup" in bot.sent[0]
+    assert storage.logged == [("payout", "pending")]
+    assert storage.draft == "Payouts go out on Fridays."
+
+
+def test_canned_replies_reach_the_prompt_in_the_reply_language():
+    provider = _Provider()
+
+    draft(_Storage(), engine(canned_replies=CANNED), provider=provider, language="ru")
+
+    prompt = provider.messages[0]["content"]
+    assert "word for word" in prompt
+    assert "[payday]\nВсё выплачиваем по пятницам." in prompt
+    # No Russian text: the English one stands in.
+    assert "[wait]\nPlease wait, a manager will reply soon." in prompt
+    assert "Payouts go out on Fridays." not in prompt
+
+
+def test_no_canned_replies_leave_the_prompt_alone():
+    provider = _Provider()
+
+    draft(_Storage(), engine(), provider=provider)
+
+    assert "word for word" not in provider.messages[0]["content"]
 
 
 class _Message:
