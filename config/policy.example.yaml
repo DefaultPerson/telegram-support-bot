@@ -33,7 +33,8 @@ templates:
 #   regex:          a regular expression tested against the message text
 #   message_length: {min: N, max: N}
 #   has_link:       true|false
-#   first_message:  true|false  (true only for the user's very first message)
+#   first_message:  true|false  (true only for the user's very first message;
+#                   one dropped by suppress_topic_creation does not count)
 #   all: [...] / any: [...]
 #
 # Actions:

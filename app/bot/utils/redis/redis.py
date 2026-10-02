@@ -248,6 +248,11 @@ class RedisStorage:
             )
         return inserted is not None
 
+    async def release_first_message(self, user_id: int) -> None:
+        """Undo :meth:`claim_first_message`: the user's next message counts as the first one."""
+        async with self.pool.acquire() as conn:
+            await conn.execute("DELETE FROM first_messages WHERE user_id = $1", user_id)
+
     async def claim_auto_reply(self, user_id: int, template_key: str) -> bool:
         """Mark a once-only auto-reply as sent; True only the first time per user and key."""
         async with self.pool.acquire() as conn:
