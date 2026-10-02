@@ -11,6 +11,10 @@ Tables (created idempotently by :func:`create_schema`):
 - ``conversations`` — rolling per-user transcript (trimmed to ``CONV_MAX``).
 - ``auto_replies_sent`` — once-only policy auto-replies already sent per user.
 - ``first_messages`` — users who have already sent their first message.
+- ``ai_draft_log``  — every AI draft and its outcome (``ai.log_drafts``).
+- ``ai_auto_modes`` — categories whose drafts go to the user without review.
+
+``users.category`` holds the category picked for the user's first message.
 """
 
 from __future__ import annotations
@@ -93,6 +97,38 @@ async def create_schema(pool: Pool) -> None:
             "INSERT INTO first_messages (user_id) "
             "SELECT DISTINCT user_id FROM conversations WHERE role = 'user' "
             "ON CONFLICT DO NOTHING"
+        )
+        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS category TEXT")
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ai_draft_log (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                thread_id BIGINT,
+                category TEXT,
+                text TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                outcome TEXT NOT NULL DEFAULT 'pending',
+                outcome_at TIMESTAMPTZ
+            )
+            """
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS ai_draft_log_pending_idx "
+            "ON ai_draft_log (user_id) WHERE outcome = 'pending'"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS ai_draft_log_created_idx ON ai_draft_log (created_at)"
+        )
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ai_auto_modes (
+                category TEXT PRIMARY KEY,
+                enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                updated_by BIGINT,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
         )
 
 
@@ -259,3 +295,103 @@ class RedisStorage:
                 limit,
             )
         return [{"role": row["role"], "content": row["content"]} for row in reversed(rows)]
+
+    async def get_user_category(self, user_id: int) -> str | None:
+        """Return the category picked for the user's first message, if any."""
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval("SELECT category FROM users WHERE id = $1", user_id)
+
+    async def set_user_category(self, user_id: int, category: str) -> None:
+        """
+        Store the user's category. Kept out of :meth:`update_user`, so a handler
+        holding an older UserData cannot wipe it.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.execute("UPDATE users SET category = $2 WHERE id = $1", user_id, category)
+
+    async def log_draft(
+        self,
+        user_id: int,
+        thread_id: int | None,
+        category: str | None,
+        text: str,
+        outcome: str = "pending",
+    ) -> None:
+        """Record a draft; a still pending earlier draft of the user becomes ``superseded``."""
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "UPDATE ai_draft_log SET outcome = 'superseded', outcome_at = now() "
+                    "WHERE user_id = $1 AND outcome = 'pending'",
+                    user_id,
+                )
+                await conn.execute(
+                    "INSERT INTO ai_draft_log (user_id, thread_id, category, text, outcome, outcome_at) "
+                    "VALUES ($1, $2, $3, $4, $5::text, CASE WHEN $5::text = 'pending' THEN NULL ELSE now() END)",
+                    user_id,
+                    thread_id,
+                    category,
+                    text,
+                    outcome,
+                )
+
+    async def resolve_draft(self, user_id: int, outcome: str) -> None:
+        """Set the outcome of the user's pending draft (sent, skipped, manager_replied)."""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE ai_draft_log SET outcome = $2, outcome_at = now() "
+                "WHERE user_id = $1 AND outcome = 'pending'",
+                user_id,
+                outcome,
+            )
+
+    async def get_draft_stats(self, days: int | None = None) -> dict[str | None, dict[str, int]]:
+        """Count drafts per category and outcome, optionally over the last ``days`` days."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT category,
+                       count(*) AS total,
+                       count(*) FILTER (WHERE outcome = 'sent') AS sent,
+                       count(*) FILTER (WHERE outcome = 'skipped') AS skipped,
+                       count(*) FILTER (WHERE outcome = 'manager_replied') AS manager_replied,
+                       count(*) FILTER (WHERE outcome = 'auto_sent') AS auto_sent
+                FROM ai_draft_log
+                WHERE $1::int IS NULL OR created_at >= now() - make_interval(days => $1::int)
+                GROUP BY category
+                """,
+                days,
+            )
+        return {
+            row["category"]: {
+                key: int(row[key])
+                for key in ("total", "sent", "skipped", "manager_replied", "auto_sent")
+            }
+            for row in rows
+        }
+
+    async def get_auto_modes(self) -> dict[str, bool]:
+        """Return the auto-reply mode of every category that has one stored."""
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT category, enabled FROM ai_auto_modes")
+        return {row["category"]: row["enabled"] for row in rows}
+
+    async def get_auto_mode(self, category: str) -> bool:
+        """True when drafts of this category go to the user without review."""
+        async with self.pool.acquire() as conn:
+            enabled = await conn.fetchval(
+                "SELECT enabled FROM ai_auto_modes WHERE category = $1", category
+            )
+        return bool(enabled)
+
+    async def set_auto_mode(self, category: str, enabled: bool, updated_by: int) -> None:
+        """Switch automatic replies for a category on or off."""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO ai_auto_modes (category, enabled, updated_by) VALUES ($1, $2, $3) "
+                "ON CONFLICT (category) DO UPDATE SET enabled = EXCLUDED.enabled, "
+                "updated_by = EXCLUDED.updated_by, updated_at = now()",
+                category,
+                enabled,
+                updated_by,
+            )
