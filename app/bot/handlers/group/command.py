@@ -54,25 +54,31 @@ async def handler(message: Message, manager: Manager, redis: RedisStorage) -> No
             # Reply with the specified text
             await message.reply(text)
 
-            # Unpin the chat message with the silent mode status
-            await message.bot.unpin_chat_message(
-                chat_id=message.chat.id,
-                message_id=user_data.message_silent_id,
-            )
+        # Unpin the chat message with the silent mode status. Without its id
+        # nothing was pinned, and an unpin without one drops the latest pin.
+        if user_data.message_silent_id is not None:
+            with suppress(TelegramBadRequest):
+                await message.bot.unpin_chat_message(
+                    chat_id=message.chat.id,
+                    message_id=user_data.message_silent_id,
+                )
 
         user_data.message_silent_mode = False
         user_data.message_silent_id = None
     else:
         text = manager.text_message.get("silent_mode_enabled")
+        # Silent mode is on even when the status message could not be pinned.
+        pinned_id = None
         with suppress(TelegramBadRequest):
             # Reply with the specified text
             msg = await message.reply(text)
 
             # Pin the chat message with the silent mode status
             await msg.pin(disable_notification=True)
+            pinned_id = msg.message_id
 
         user_data.message_silent_mode = True
-        user_data.message_silent_id = msg.message_id
+        user_data.message_silent_id = pinned_id
 
     await redis.update_user(user_data.id, user_data)
 
