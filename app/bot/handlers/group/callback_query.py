@@ -8,6 +8,7 @@ from aiogram.types import CallbackQuery
 from app.bot.manager import Manager
 from app.bot.policy import PolicyEngine
 from app.bot.utils.redis import RedisStorage
+from app.bot.utils.reminders import end_reply_wait, reminders_enabled
 
 router = Router()
 router.callback_query.filter(
@@ -45,6 +46,8 @@ async def ai_draft_callback(
                 await redis.append_conversation(user_id, "assistant", draft)
                 if log_drafts:
                     await redis.resolve_draft(user_id, "sent")
+                if reminders_enabled(policy_engine):
+                    await end_reply_wait(redis, user_id)
                 await call.answer(manager.text_message.get("draft_sent"))
             except TelegramBadRequest:
                 await call.answer(manager.text_message.get("draft_send_failed"), show_alert=True)

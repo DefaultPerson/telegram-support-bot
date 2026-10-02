@@ -13,6 +13,7 @@ from app.bot.policy import EvalContext, PolicyEngine
 from app.bot.policy.context import EVENT_TOPIC_CREATED
 from app.bot.types.album import Album
 from app.bot.utils.redis import RedisStorage
+from app.bot.utils.reminders import end_reply_wait, reminders_enabled
 
 router = Router()
 router.message.filter(
@@ -141,13 +142,12 @@ async def handler(
     # The manager answered in their own words: a pending draft was not used.
     # Unknown commands also land here and are not answers, and an answer the
     # user never got leaves the draft pending.
-    if (
-        delivered
-        and policy_engine is not None
-        and policy_engine.ai.log_drafts
-        and not (message.text or "").startswith("/")
-    ):
+    answered = delivered and not (message.text or "").startswith("/")
+    if answered and policy_engine is not None and policy_engine.ai.log_drafts:
         await redis.resolve_draft(user_data.id, "manager_replied")
+    # The user got an answer: the wait for a reply is over.
+    if answered and reminders_enabled(policy_engine):
+        await end_reply_wait(redis, user_data.id)
 
     # Reply to the edited message with the specified text
     msg = await message.reply(text)
