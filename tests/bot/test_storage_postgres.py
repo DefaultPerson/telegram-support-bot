@@ -238,3 +238,100 @@ def test_auto_modes():
             assert await conn.fetchval("SELECT updated_by FROM ai_auto_modes WHERE category = 'payout'") == 2
 
     run(scenario)
+
+
+def test_upgrade_starts_with_no_reply_waits():
+    async def scenario(pool, storage):
+        await storage.update_user(16, user(16, thread_id=116))
+        await storage.append_conversation(16, "user", "still waiting")
+
+        await create_schema(pool)
+        await create_schema(pool)
+
+        async with pool.acquire() as conn:
+            assert await conn.fetchval("SELECT count(*) FROM reply_waits") == 0
+        assert await storage.get_due_reply_waits([1], []) == []
+
+    run(scenario, legacy=True)
+
+
+async def wait_since(pool, user_id: int, minutes: int, reminded: int = 0) -> None:
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE reply_waits SET since = now() - make_interval(mins => $2), reminded = $3 "
+            "WHERE user_id = $1",
+            user_id, minutes, reminded,
+        )
+
+
+def test_reply_waits():
+    async def scenario(pool, storage):
+        await storage.update_user(17, user(17, thread_id=117))
+        await storage.start_reply_wait(17)
+        await wait_since(pool, 17, 200)
+        # A second message does not move the start of the wait.
+        await storage.start_reply_wait(17)
+        (due,) = await storage.get_due_reply_waits([180, 1440], [])
+        assert (due["user_id"], due["message_thread_id"], due["language_code"]) == (17, 117, "en")
+        assert (due["reminded"], due["level"], due["waited_minutes"]) == (0, 1, 200)
+
+        assert await storage.claim_reply_reminder(17, due["since"], 1) is True
+        assert await storage.claim_reply_reminder(17, due["since"], 1) is False
+        assert await storage.get_due_reply_waits([180, 1440], []) == []
+
+        # A reply ends the wait; the next message starts a new one.
+        await storage.end_reply_wait(17)
+        await storage.end_reply_wait(17)
+        assert await storage.claim_reply_reminder(17, due["since"], 2) is False
+        await storage.start_reply_wait(17)
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT since, reminded FROM reply_waits WHERE user_id = 17")
+        assert row["reminded"] == 0 and row["since"] > due["since"]
+
+    run(scenario)
+
+
+def test_due_reply_waits_skip_what_needs_no_reminder():
+    async def scenario(pool, storage):
+        def make(id_, thread=True, **fields):
+            data = user(id_, thread_id=100 + id_ if thread else None)
+            for key, value in fields.items():
+                setattr(data, key, value)
+            return data
+
+        users = {
+            21: make(21),                                # due: first threshold
+            22: make(22),                                # too early
+            23: make(23, is_banned=True),
+            24: make(24, message_silent_mode=True),
+            25: make(25, status="closed"),
+            26: make(26, thread=False),
+            27: make(27),                                # skipped category
+            28: make(28, status="escalated"),            # due, other category
+            29: make(29),                                # due: second threshold
+            30: make(30),                                # every threshold reminded
+            31: make(31),                                # both thresholds at once
+        }
+        minutes = {21: 200, 22: 30, 29: 1500, 30: 1500, 31: 1500}
+        reminded = {29: 1, 30: 2}
+        for id_, data in users.items():
+            await storage.update_user(id_, data)
+            await storage.start_reply_wait(id_)
+            await wait_since(pool, id_, minutes.get(id_, 200), reminded.get(id_, 0))
+        await storage.set_user_category(27, "spam")
+        await storage.set_user_category(28, "payout")
+        # A wait of a user without a record is ignored.
+        await storage.start_reply_wait(32)
+        await wait_since(pool, 32, 200)
+
+        due = await storage.get_due_reply_waits([180, 1440], ["spam"])
+
+        assert {row["user_id"]: (row["reminded"], row["level"]) for row in due} == {
+            21: (0, 1), 28: (0, 1), 29: (1, 2), 31: (0, 2),
+        }
+        assert {row["user_id"] for row in await storage.get_due_reply_waits([180, 1440], [])} == {
+            21, 27, 28, 29, 31,
+        }
+        assert await storage.get_due_reply_waits([], []) == []
+
+    run(scenario)
