@@ -86,7 +86,9 @@ Manager commands in a topic: `/template <key>`, `/tag [name]`, `/close`,
 | `AI_API_KEY` | _(empty)_ | API key; empty also disables |
 | `AI_MODEL` | `openai/gpt-5.6-luna` | Model id |
 | `AI_SYSTEM_PROMPT_PATH` | `config/system_prompt.txt` | System prompt file |
-| `AI_TIMEOUT_S` | `8` | Per-request timeout |
+| `AI_TIMEOUT_S` | `8` | Timeout of one request (a single attempt) |
+| `AI_MAX_RETRIES` | `2` | Retries after a 429, a 5xx or a timeout; the client waits out `Retry-After` in between |
+| `AI_TOTAL_TIMEOUT_S` | `0` | Ceiling on one draft, retries included; `0` derives it as `AI_TIMEOUT_S × (retries + 1) + 120 × retries` |
 | `AI_MAX_TOKENS` | `4096` | Cap on the drafted reply length (reasoning tokens included) |
 | `AI_VISION` | `true` | Send attached images to the model (needs a multimodal `AI_MODEL`) |
 | `AI_MAX_IMAGES` | `4` | Images attached per album |

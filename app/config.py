@@ -100,6 +100,10 @@ class AIConfig:
       MODEL; turn it off for text-only ones or the request is rejected.
     - MAX_IMAGES (int): Cap on how many images of one album are attached.
     - IMAGE_MAX_BYTES (int): Per-image size ceiling; larger ones are skipped.
+    - MAX_RETRIES (int): Retries after a rate limit (429), a 5xx or a timeout.
+      The client waits out ``Retry-After`` (or a short backoff) in between.
+    - TOTAL_TIMEOUT_S (int): Ceiling on the whole draft, retries included.
+      0 derives it from TIMEOUT_S and MAX_RETRIES (see ``total_timeout_s``).
     """
     PROVIDER: str
     BASE_URL: str
@@ -112,6 +116,22 @@ class AIConfig:
     VISION: bool = True
     MAX_IMAGES: int = 4
     IMAGE_MAX_BYTES: int = 5_242_880
+    MAX_RETRIES: int = 2
+    TOTAL_TIMEOUT_S: int = 0
+
+    # Longest Retry-After the openai SDK honours before giving up on a retry.
+    RETRY_AFTER_CAP_S = 120
+
+    @property
+    def total_timeout_s(self) -> int:
+        """
+        Budget for one draft: every attempt may use TIMEOUT_S, and every retry
+        may first wait out the longest Retry-After the client honours.
+        """
+        if self.TOTAL_TIMEOUT_S > 0:
+            return self.TOTAL_TIMEOUT_S
+        retries = max(self.MAX_RETRIES, 0)
+        return self.TIMEOUT_S * (retries + 1) + self.RETRY_AFTER_CAP_S * retries
 
 
 @dataclass
@@ -180,5 +200,7 @@ def load_config() -> Config:
             VISION=env.bool("AI_VISION", True),
             MAX_IMAGES=env.int("AI_MAX_IMAGES", 4),
             IMAGE_MAX_BYTES=env.int("AI_IMAGE_MAX_BYTES", 5_242_880),
+            MAX_RETRIES=env.int("AI_MAX_RETRIES", 2),
+            TOTAL_TIMEOUT_S=env.int("AI_TOTAL_TIMEOUT_S", 0),
         ),
     )
