@@ -110,11 +110,11 @@ def conversation(monkeypatch):
         id=42, full_name="User", username="-", language_code="en",
     )
 
-    def send(text: str):
+    def send(text: str, policy=None):
         message = _Message(bot, text)
         before = len(drafts)
         asyncio.run(private_message.handle_incoming_message(
-            message, manager, storage, user, policy_engine=engine, llm_provider=object(),
+            message, manager, storage, user, policy_engine=policy or engine, llm_provider=object(),
         ))
         return message.answers, len(drafts) > before
 
@@ -153,3 +153,20 @@ def test_reply_without_once_repeats_as_before(conversation):
         answers, drafted = conversation.send("help")
         assert answers == ["Please read the rules."]
         assert drafted is False
+
+
+def test_default_once_sends_the_price_reply_once(conversation):
+    # The rule has no `once` of its own: defaults.auto_reply_once decides.
+    policy = load_policy_from_dict({
+        "defaults": {"auto_reply_once": True},
+        "templates": POLICY["templates"],
+        "rules": [{"id": "price", "when": {"keywords_any": ["price"]},
+                   "actions": [{"type": "auto_reply", "template_key": "rules"}]}],
+    })
+
+    answers, _ = conversation.send("what is the price", policy)
+    assert answers == ["Please read the rules."]
+
+    answers, drafted = conversation.send("price again?", policy)
+    assert answers == []
+    assert drafted is True
