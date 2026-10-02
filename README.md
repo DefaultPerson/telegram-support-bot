@@ -105,6 +105,7 @@ Manager commands in a topic: `/template <key>`, `/tag [name]`, `/close`,
 | `AI_MAX_RETRIES` | `2` | Retries after a 429, a 5xx or a timeout; the client waits out `Retry-After` in between |
 | `AI_TOTAL_TIMEOUT_S` | `0` | Ceiling on one draft, retries included; `0` derives it as `AI_TIMEOUT_S × (retries + 1) + 120 × retries` |
 | `AI_MAX_TOKENS` | `4096` | Cap on the drafted reply length (reasoning tokens included) |
+| `AI_REASONING_EFFORT` | _(empty)_ | `minimal`, `low`, `medium` or `high`, sent as OpenRouter's `reasoning.effort` with drafts and classification; empty sends nothing |
 | `AI_VISION` | `true` | Send attached images to the model (needs a multimodal `AI_MODEL`) |
 | `AI_MAX_IMAGES` | `4` | Images attached per album |
 | `AI_IMAGE_MAX_BYTES` | `5242880` | Per-image size ceiling; larger ones are skipped |

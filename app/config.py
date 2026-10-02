@@ -108,6 +108,9 @@ class AIConfig:
       The client waits out ``Retry-After`` (or a short backoff) in between.
     - TOTAL_TIMEOUT_S (int): Ceiling on the whole draft, retries included.
       0 derives it from TIMEOUT_S and MAX_RETRIES (see ``total_timeout_s``).
+    - REASONING_EFFORT (str): Reasoning effort for reasoning models (minimal,
+      low, medium, high), sent as OpenRouter's ``reasoning.effort``. Empty
+      sends nothing and leaves the model's default.
     """
     PROVIDER: str
     BASE_URL: str
@@ -122,6 +125,7 @@ class AIConfig:
     IMAGE_MAX_BYTES: int = 5_242_880
     MAX_RETRIES: int = 2
     TOTAL_TIMEOUT_S: int = 0
+    REASONING_EFFORT: str = ""
 
     # Longest Retry-After the openai SDK honours before giving up on a retry.
     RETRY_AFTER_CAP_S = 120
@@ -207,5 +211,6 @@ def load_config() -> Config:
             IMAGE_MAX_BYTES=env.int("AI_IMAGE_MAX_BYTES", 5_242_880),
             MAX_RETRIES=env.int("AI_MAX_RETRIES", 2),
             TOTAL_TIMEOUT_S=env.int("AI_TOTAL_TIMEOUT_S", 0),
+            REASONING_EFFORT=env.str("AI_REASONING_EFFORT", "").strip(),
         ),
     )

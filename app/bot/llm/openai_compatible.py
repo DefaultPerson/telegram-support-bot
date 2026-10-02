@@ -24,6 +24,7 @@ class OpenAICompatibleProvider:
         timeout: int,
         max_tokens: int = 4096,
         max_retries: int = 2,
+        reasoning_effort: str = "",
     ) -> None:
         from openai import AsyncOpenAI
 
@@ -34,15 +35,21 @@ class OpenAICompatibleProvider:
         )
         self._model = model
         self._max_tokens = max_tokens
+        self._reasoning_effort = reasoning_effort
 
     async def draft_reply(self, messages: list[ChatMessage]) -> str | None:
         # max_tokens is required: providers that bill per request reserve the
         # model's full output window when it is omitted and reject the call if
         # the remaining balance cannot cover the reservation.
+        extra = {}
+        if self._reasoning_effort:
+            # OpenRouter's unified field; without it the model's default applies.
+            extra["extra_body"] = {"reasoning": {"effort": self._reasoning_effort}}
         response = await self._client.chat.completions.create(
             model=self._model,
             messages=messages,
             max_tokens=self._max_tokens,
+            **extra,
         )
         choices = response.choices or []
         if not choices:

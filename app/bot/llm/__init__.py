@@ -36,6 +36,7 @@ def get_provider(config: AIConfig) -> LLMProvider | None:
                 timeout=config.TIMEOUT_S,
                 max_tokens=config.MAX_TOKENS,
                 max_retries=config.MAX_RETRIES,
+                reasoning_effort=config.REASONING_EFFORT,
             )
         except ImportError:
             logger.warning(
