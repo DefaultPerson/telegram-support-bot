@@ -103,8 +103,9 @@ Manager commands in a topic: `/template <key>`, `/tag [name]`, `/close`,
 
 The optional `texts` section replaces the bot's built-in texts
 (`app/bot/utils/texts.py`) per key and language, for example the `/start`
-welcome `main_menu` (may use `{full_name}`). An unknown key or language fails
-the policy load; without the section every text stays built in.
+welcome `main_menu` (may use `{full_name}`). An unknown key or language, or a
+placeholder the built-in text of that key does not have, fails the policy load;
+without the section every text stays built in.
 
 ```yaml
 texts:

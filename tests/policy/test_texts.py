@@ -34,6 +34,21 @@ def test_unsupported_language_is_rejected():
         load_policy_from_dict({"texts": {"main_menu": {"de": "Hallo"}}})
 
 
+@pytest.mark.parametrize("text,error", [
+    ("Waiting {hour} h", "unknown placeholders"),
+    ("Waiting {} h", "unknown placeholders"),
+    ("Waiting {hours h", "expected '}'"),
+])
+def test_placeholders_of_formatted_texts_are_checked(text, error):
+    with pytest.raises(ValidationError, match=error):
+        load_policy_from_dict({"texts": {"reply_reminder": {"en": text}}})
+
+
+def test_override_may_use_fewer_placeholders():
+    texts = {"reply_reminder": {"en": "Still there?", "ru": "Прошло {hours} ч"}}
+    assert load_policy_from_dict({"texts": texts}).texts == texts
+
+
 def test_override_replaces_the_text_in_its_language(overrides):
     builtin_ru = TextMessage("ru").get("main_menu")
     overrides({"main_menu": {"en": "Welcome to Example support."}})

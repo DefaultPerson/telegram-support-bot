@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import string
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -114,6 +115,11 @@ class RemindersSection(BaseModel):
         return sorted(set(value))
 
 
+def _fields(text: str) -> set[str]:
+    """Placeholder names in a str.format() template; raises ValueError on stray braces."""
+    return {name for _, name, _, _ in string.Formatter().parse(text) if name is not None}
+
+
 class PolicyDocument(BaseModel):
     """Top-level schema of a policy YAML file."""
     model_config = ConfigDict(extra="forbid")
@@ -137,6 +143,22 @@ class PolicyDocument(BaseModel):
         languages = sorted({lang for texts in value.values() for lang in texts} - set(SUPPORTED_LANGUAGES))
         if languages:
             raise ValueError(f"texts: unsupported languages {languages}")
+        builtin = TextMessage("en").data
+        for key, texts in value.items():
+            for lang, text in texts.items():
+                # A built-in text with placeholders gets .format() applied, so
+                # an override may only use those placeholders, in valid braces.
+                allowed = _fields(builtin.get(lang, {}).get(key, ""))
+                if not allowed:
+                    continue
+                try:
+                    extra = sorted(_fields(text) - allowed)
+                except ValueError as ex:
+                    raise ValueError(f"texts.{key}.{lang}: {ex}") from None
+                if extra:
+                    raise ValueError(
+                        f"texts.{key}.{lang}: unknown placeholders {extra}, allowed {sorted(allowed)}"
+                    )
         return value
 
     @model_validator(mode="after")
