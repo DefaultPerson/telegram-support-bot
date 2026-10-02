@@ -83,21 +83,28 @@ async def create_schema(pool: Pool) -> None:
             )
             """
         )
-        await conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS first_messages (
-                user_id BIGINT PRIMARY KEY,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        # Users who wrote before this table existed are not new. Filled once, as
+        # the table is created: from then on the bot keeps it itself, and a
+        # transcript row alone no longer proves the user reached the topic.
+        async with conn.transaction():
+            backfill = await conn.fetchval("SELECT to_regclass('first_messages') IS NULL")
+            await conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS first_messages (
+                    user_id BIGINT PRIMARY KEY,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
             )
-            """
-        )
-        # Users who wrote before this table existed are not new: their turns
-        # are already in the transcript.
-        await conn.execute(
-            "INSERT INTO first_messages (user_id) "
-            "SELECT DISTINCT user_id FROM conversations WHERE role = 'user' "
-            "ON CONFLICT DO NOTHING"
-        )
+            if backfill:
+                # Any transcript row counts, not only the user's own turns:
+                # media without a caption leaves none, and old turns are trimmed
+                # to CONV_MAX. A pending draft also means the user wrote.
+                await conn.execute(
+                    "INSERT INTO first_messages (user_id) "
+                    "SELECT user_id FROM conversations UNION SELECT user_id FROM ai_drafts "
+                    "ON CONFLICT DO NOTHING"
+                )
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS category TEXT")
         await conn.execute(
             """
