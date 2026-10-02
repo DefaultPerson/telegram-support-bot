@@ -43,6 +43,20 @@ class Defaults(BaseModel):
     auto_reply_once: bool = False
 
 
+class AICategory(BaseModel):
+    """A conversation category the LLM picks for the user's first message."""
+    model_config = ConfigDict(extra="forbid")
+
+    # Short: it travels in the /ai_auto confirmation button's callback data.
+    key: str = Field(min_length=1, max_length=40)
+    title: str
+    icon: str = ""
+    # Never answered automatically: /ai_auto refuses to switch it on.
+    needs_human: bool = False
+    # Message every admin in BOT_DEV_IDS with a link to the topic.
+    notify_admins: bool = False
+
+
 class AISection(BaseModel):
     """LLM-related options. The engine never executes actions from here."""
     model_config = ConfigDict(extra="forbid")
@@ -50,6 +64,18 @@ class AISection(BaseModel):
     enabled: bool = False
     system_prompt_path: str | None = None
     max_context_messages: int = 12
+    # Record every draft and what became of it (sent, skipped, ...) for /ai_stats.
+    log_drafts: bool = False
+    # Empty: the first message is not classified.
+    categories: list[AICategory] = Field(default_factory=list)
+    # /ai_auto warns before switching a category on below this share of sent
+    # drafts or with fewer reviewed drafts than auto_min_drafts.
+    auto_threshold: float = 0.95
+    auto_min_drafts: int = 20
+
+    def category(self, key: str | None) -> AICategory | None:
+        """Return the configured category with this key, if any."""
+        return next((c for c in self.categories if c.key == key), None)
 
 
 class PolicyDocument(BaseModel):
