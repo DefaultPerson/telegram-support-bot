@@ -256,6 +256,33 @@ def test_upgrade_starts_with_no_reply_waits():
     run(scenario, legacy=True)
 
 
+def test_conversation_summary():
+    async def scenario(pool, storage):
+        assert await storage.get_conversation_summary(16) is None
+
+        await storage.set_conversation_summary(16, "wants a refund", 5)
+        # A fold that covers no more than the stored one does not replace it.
+        await storage.set_conversation_summary(16, "stale fold", 3)
+        await storage.set_conversation_summary(16, "stale fold", 5)
+        assert await storage.get_conversation_summary(16) == ("wants a refund", 5)
+
+        await storage.set_conversation_summary(16, "refund promised by Friday", 9)
+        assert await storage.get_conversation_summary(16) == ("refund promised by Friday", 9)
+        assert await storage.get_conversation_summary(17) is None
+
+    run(scenario)
+
+
+def test_upgrade_adds_the_summary_table():
+    async def scenario(pool, storage):
+        await create_schema(pool)
+        await create_schema(pool)
+        await storage.set_conversation_summary(18, "said hello", 1)
+        assert await storage.get_conversation_summary(18) == ("said hello", 1)
+
+    run(scenario, legacy=True)
+
+
 async def wait_since(pool, user_id: int, minutes: int, reminded: int = 0) -> None:
     async with pool.acquire() as conn:
         await conn.execute(
@@ -288,6 +315,29 @@ def test_reply_waits():
         async with pool.acquire() as conn:
             row = await conn.fetchrow("SELECT since, reminded FROM reply_waits WHERE user_id = 17")
         assert row["reminded"] == 0 and row["since"] > due["since"]
+
+    run(scenario)
+
+
+def test_conversation_since():
+    async def scenario(pool, storage):
+        for n in range(10):
+            await storage.append_conversation(19, "assistant" if n % 2 else "user", f"turn {n}")
+        await storage.append_conversation(20, "user", "someone else")
+
+        rows = await storage.get_conversation_since(19, 0, 4)
+        ids = [row["id"] for row in rows]
+        assert [row["content"] for row in rows] == [f"turn {n}" for n in range(10)]
+        assert rows[1] == {"id": ids[1], "role": "assistant", "content": "turn 1"}
+        assert ids == sorted(ids)
+
+        # The messages above the covered id, then the window.
+        rows = await storage.get_conversation_since(19, ids[5], 2)
+        assert [row["content"] for row in rows] == ["turn 6", "turn 7", "turn 8", "turn 9"]
+        # The window comes whole even when part of it is covered.
+        rows = await storage.get_conversation_since(19, ids[8], 4)
+        assert [row["content"] for row in rows] == ["turn 6", "turn 7", "turn 8", "turn 9"]
+        assert await storage.get_conversation_since(21, 0, 4) == []
 
     run(scenario)
 
@@ -375,5 +425,39 @@ def test_due_reply_waits_skip_what_needs_no_reminder():
             21, 27, 28, 29, 31,
         }
         assert await storage.get_due_reply_waits([], []) == []
+
+    run(scenario)
+
+
+def test_trim_keeps_messages_not_in_the_summary():
+    async def scenario(pool, storage):
+        keeping = RedisStorage(pool, keep_unsummarized=True)
+        total = RedisStorage.CONV_MAX + 5
+
+        async def contents(user_id):
+            return [row["content"] for row in await keeping.get_conversation_since(user_id, 0, 0)]
+
+        # No summary yet: nothing is folded, nothing goes.
+        for n in range(total):
+            await keeping.append_conversation(22, "user", f"turn {n}")
+        assert len(await contents(22)) == total
+
+        # The first 3 folded: they go, the unfolded ones beyond CONV_MAX stay.
+        rows = await keeping.get_conversation_since(22, 0, 0)
+        await keeping.set_conversation_summary(22, "summary", rows[2]["id"])
+        await keeping.append_conversation(22, "user", "one more")
+        assert await contents(22) == [f"turn {n}" for n in range(3, total)] + ["one more"]
+
+        # Everything folded: back to the last CONV_MAX.
+        rows = await keeping.get_conversation_since(22, 0, 0)
+        await keeping.set_conversation_summary(22, "summary", rows[-1]["id"])
+        await keeping.append_conversation(22, "user", "and another")
+        assert len(await contents(22)) == RedisStorage.CONV_MAX
+
+        # Without the flag the trim ignores the summary, as before.
+        await storage.set_conversation_summary(23, "summary", 1)
+        for n in range(total):
+            await storage.append_conversation(23, "user", f"turn {n}")
+        assert await contents(23) == [f"turn {n}" for n in range(5, total)]
 
     run(scenario)
