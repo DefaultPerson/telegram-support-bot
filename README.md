@@ -144,6 +144,30 @@ right away, as if the manager had pressed Send, and the topic gets a copy marked
 as an automatic reply. Silent mode (`/silent`) keeps it a normal draft. Modes are
 stored in PostgreSQL and are all off until an admin turns one on.
 
+### Conversation summary
+
+A draft sees the last `max_context_messages` turns of the conversation. With
+`summary.enabled` in the `ai` section of the policy file the earlier turns are
+not lost: once `fold_batch` of them are outside the window and not summarized
+yet, a separate request to the same model folds them into a running summary,
+which reaches the draft as a second system message. Fewer than that go to the
+model verbatim, between the summary and the window.
+
+| Option | Default | Description |
+|---|---|---|
+| `summary.enabled` | `false` | Summarize the turns older than `max_context_messages` |
+| `summary.fold_batch` | `8` | Fold once this many older turns are not in the summary |
+| `summary.max_chars` | `1200` | Length ceiling of the summary; a longer answer is cut |
+
+The summary keeps what the customer wants, what support has answered, promised
+or asked for, the links and data the customer sent, and the open questions, in
+the language of the conversation. It is stored per user in PostgreSQL with the
+last turn it covers. While the option is on and an AI provider is set, the
+stored transcript drops a turn past its 40-turn limit only once the summary has
+taken it in. A failed or timed-out summary request (`AI_TOTAL_TIMEOUT_S` applies
+to it too) is logged, the draft gets the window alone, and the stored summary
+stays as it was.
+
 ### Reply reminders
 
 The `reminders` section of the policy file (so it needs `POLICY_ENABLED=true`)
