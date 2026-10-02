@@ -25,8 +25,6 @@ router.callback_query.filter(
 )
 
 EMPTY_STATS = {"total": 0, "sent": 0, "skipped": 0, "manager_replied": 0, "auto_sent": 0}
-# Longest /ai_stats period; far larger ones make the database query fail.
-MAX_STATS_DAYS = 3650
 
 
 def _ai(policy_engine: PolicyEngine | None) -> AISection:
@@ -63,58 +61,6 @@ def below_bar(ai: AISection, stats: dict[str, int]) -> bool:
     """True when the category has too few reviewed drafts or too low a sent share."""
     rate = sent_rate(stats)
     return reviewed(stats) < ai.auto_min_drafts or rate is None or rate < ai.auto_threshold
-
-
-@router.message(Command("ai_stats"))
-async def ai_stats_handler(
-        message: Message,
-        command: CommandObject,
-        manager: Manager,
-        redis: RedisStorage,
-        policy_engine: PolicyEngine | None = None,
-) -> None:
-    """Draft outcomes per category: /ai_stats [days]. Admins only."""
-    if not is_admin(manager.config, message.from_user and message.from_user.id):
-        await message.reply(manager.text_message.get("ai_admins_only"))
-        return
-
-    ai = _ai(policy_engine)
-    if not ai.log_drafts:
-        await message.reply(manager.text_message.get("ai_stats_disabled"))
-        return
-
-    args = (command.args or "").strip()
-    days = None
-    if args:
-        if not args.isdecimal() or not 1 <= int(args) <= MAX_STATS_DAYS:
-            await message.reply(manager.text_message.get("ai_stats_usage"))
-            return
-        days = int(args)
-
-    stats = await redis.get_draft_stats(days)
-    if not stats:
-        await message.reply(manager.text_message.get("ai_stats_empty"))
-        return
-
-    # Configured categories in config order, then keys no longer configured,
-    # then drafts without a category.
-    order = [c.key for c in ai.categories]
-    keys = sorted(stats, key=lambda k: (k is None, k not in order, order.index(k) if k in order else 0, k or ""))
-
-    if days is None:
-        lines = [manager.text_message.get("ai_stats_header_all")]
-    else:
-        lines = [manager.text_message.get("ai_stats_header_days").format(days=days)]
-    for key in keys:
-        row = stats[key]
-        lines.append(
-            manager.text_message.get("ai_stats_row").format(
-                category=_label(manager, ai, key), rate=_percent(sent_rate(row)), **row,
-            )
-        )
-    lines.append("")
-    lines.append(manager.text_message.get("ai_stats_note"))
-    await message.reply("\n".join(lines))
 
 
 @router.message(Command("ai_auto"))

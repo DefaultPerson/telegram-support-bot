@@ -4,7 +4,6 @@ from types import SimpleNamespace
 import pytest
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNetworkError
 
-from app.bot.handlers.group import ai as group_ai
 from app.bot.handlers.group import callback_query as group_callback
 from app.bot.handlers.group import message as group_message
 from app.bot.policy import load_policy_from_dict
@@ -28,14 +27,12 @@ def make_user(silent: bool = False) -> UserData:
 class _Storage:
     """In-memory stand-in for the draft-related part of RedisStorage."""
 
-    def __init__(self, draft: str | None = "Draft text", stats=None, message_id: int | None = None) -> None:
+    def __init__(self, draft: str | None = "Draft text", message_id: int | None = None) -> None:
         self.draft = draft
         self.message_id = message_id
         self.logged: list[tuple] = []
         self.resolved: list[tuple] = []
         self.conversation: list[tuple] = []
-        self.stats = stats or {}
-        self.stats_days = "unset"
 
     async def get_conversation(self, user_id, limit):
         return [{"role": "user", "content": "where is my payout?"}]
@@ -66,10 +63,6 @@ class _Storage:
 
     async def get_user_category(self, user_id):
         return None
-
-    async def get_draft_stats(self, days=None):
-        self.stats_days = days
-        return self.stats
 
     async def get_by_message_thread_id(self, thread_id):
         return make_user()
@@ -368,78 +361,3 @@ def test_silent_mode_reply_is_not_counted(manager_reply):
     storage.get_by_message_thread_id = silent
     manager_reply("note for colleagues", engine(log_drafts=True), storage)
     assert storage.resolved == []
-
-
-class _CommandMessage:
-    def __init__(self, user_id: int) -> None:
-        self.from_user = SimpleNamespace(id=user_id)
-        self.replies: list[str] = []
-
-    async def reply(self, text, reply_markup=None):
-        self.replies.append(text)
-
-
-def stats_command(args, policy, storage=None, user_id=ADMIN):
-    storage = storage or _Storage()
-    message = _CommandMessage(user_id)
-    command = SimpleNamespace(args=args)
-    mgr = SimpleNamespace(
-        config=SimpleNamespace(bot=SimpleNamespace(DEV_IDS=[ADMIN])),
-        text_message=SimpleNamespace(
-            get=lambda key: {
-                "ai_stats_row": "{category}: {total} {sent} {skipped} {manager_replied} {auto_sent} {rate}",
-                "ai_stats_header_days": "days {days}",
-                "no_category": "none",
-            }.get(key, key),
-        ),
-    )
-    asyncio.run(group_ai.ai_stats_handler(message, command, mgr, storage, policy))
-    return message.replies, storage
-
-
-def row(total, sent, skipped, replied, auto=0):
-    return {"total": total, "sent": sent, "skipped": skipped, "manager_replied": replied, "auto_sent": auto}
-
-
-def test_ai_stats_is_admin_only():
-    replies, _ = stats_command("", engine(log_drafts=True), user_id=999)
-    assert replies == ["ai_admins_only"]
-
-
-def test_ai_stats_needs_the_log():
-    replies, _ = stats_command("", engine())
-    assert replies == ["ai_stats_disabled"]
-
-
-@pytest.mark.parametrize("args", ["week", "0", "-7", "3651", "99999999999", "²"])
-def test_ai_stats_rejects_a_bad_period(args):
-    replies, storage = stats_command(args, engine(log_drafts=True))
-    assert replies == ["ai_stats_usage"]
-    assert storage.stats_days == "unset"
-
-
-def test_ai_stats_accepts_the_longest_period():
-    _, storage = stats_command("3650", engine(log_drafts=True))
-    assert storage.stats_days == 3650
-
-
-def test_ai_stats_counts_per_category():
-    policy = engine(log_drafts=True, categories=[
-        {"key": "payout", "title": "Payouts", "icon": "💸"},
-        {"key": "other", "title": "Other"},
-    ])
-    storage = _Storage(stats={
-        None: row(2, 0, 1, 0),
-        "other": row(3, 1, 1, 0),
-        "payout": row(10, 6, 1, 1, auto=2),
-    })
-
-    replies, storage = stats_command("7", policy, storage)
-
-    assert storage.stats_days == 7
-    lines = replies[0].split("\n")
-    assert lines[0] == "days 7"
-    # Config order first, uncategorised last; the share counts reviewed drafts only.
-    assert lines[1] == "💸 Payouts: 10 6 1 1 2 75%"
-    assert lines[2] == "Other: 3 1 1 0 0 50%"
-    assert lines[3] == "none: 2 0 1 0 0 0%"
