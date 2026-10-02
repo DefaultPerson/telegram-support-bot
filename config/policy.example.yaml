@@ -141,8 +141,9 @@ reminders:
 
 # Optional replacements for the bot's built-in texts (app/bot/utils/texts.py),
 # per key and language (en, ru). Telegram HTML, like the built-in texts; keep
-# their {placeholders} (`variables` are not applied here). An unknown key or language fails the policy load; a key
-# or language left out keeps the built-in text. main_menu is the welcome on
+# their {placeholders} (`variables` are not applied here). An unknown key or
+# language, or a placeholder the built-in text does not have, fails the policy
+# load; a key or language left out keeps the built-in text. main_menu is the welcome on
 # /start and may use {full_name}.
 texts: {}
 # texts:
