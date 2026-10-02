@@ -14,8 +14,9 @@ from .bot import commands
 from .bot.handlers import include_routers
 from .bot.llm import get_provider
 from .bot.middlewares import register_middlewares
-from .bot.policy import load_policy
+from .bot.policy import PolicyEngine, load_policy
 from .bot.utils.redis import create_schema
+from .bot.utils.reminders import reminders_enabled, run_reply_reminders
 from .config import Config, load_config
 from .logger import setup_logger
 
@@ -36,6 +37,10 @@ async def on_shutdown(
     :param bot: Bot: The bot instance.
     :param pg_pool: asyncpg.Pool: The PostgreSQL connection pool.
     """
+    # Stop the reply reminders before the pool they use is closed
+    reminders_task = dispatcher.get("reply_reminders_task")
+    if reminders_task is not None:
+        reminders_task.cancel()
     # Stop apscheduler
     apscheduler.shutdown()
     # Delete commands and close storages when shutting down
@@ -48,18 +53,31 @@ async def on_shutdown(
 
 async def on_startup(
     apscheduler: AsyncIOScheduler,
+    dispatcher: Dispatcher,
     config: Config,
     bot: Bot,
+    pg_pool: asyncpg.Pool,
+    policy_engine: PolicyEngine | None = None,
 ) -> None:
     """
     Startup event handler. This runs when the bot starts up.
 
     :param apscheduler: AsyncIOScheduler: The apscheduler instance.
+    :param dispatcher: Dispatcher: The bot dispatcher.
     :param config: Config: The config instance.
     :param bot: Bot: The bot instance.
+    :param pg_pool: asyncpg.Pool: The PostgreSQL connection pool.
+    :param policy_engine: The policy engine, None when disabled.
     """
     # Start apscheduler
     apscheduler.start()
+    # Remind the support group of users waiting too long (policy `reminders`).
+    # A plain task rather than a job in the Redis job store: its state lives in
+    # PostgreSQL, and turning it off leaves no stored job behind.
+    if reminders_enabled(policy_engine):
+        dispatcher["reply_reminders_task"] = asyncio.create_task(
+            run_reply_reminders(bot, config, pg_pool, policy_engine.reminders)
+        )
     # Setup commands when starting up
     await commands.setup(bot, config)
 

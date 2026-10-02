@@ -166,6 +166,7 @@ class TextMessage(Text):
                 "ai_auto_enabled": "Automatic replies for {category} are on.",
                 "ai_auto_disabled": "Automatic replies for {category} are off.",
                 "ai_auto_cancelled": "Cancelled.",
+                "reply_reminder": "⏰ The user has been waiting for a reply for {hours} h",
             },
             "ru": {
                 "select_language": f"👋 <b>Привет</b>, {hbold('{full_name}')}!\n\nВыберите язык:",
@@ -277,5 +278,6 @@ class TextMessage(Text):
                 "ai_auto_enabled": "Автоответы для {category} включены.",
                 "ai_auto_disabled": "Автоответы для {category} выключены.",
                 "ai_auto_cancelled": "Отменено.",
+                "reply_reminder": "⏰ Клиент ждёт ответа {hours} ч",
             },
         }

@@ -228,7 +228,7 @@ def handler(monkeypatch):
     async def no_sleep(_):
         return None
 
-    def fake_layer(*args, classify, draft):
+    def fake_layer(*args, classify, draft, reminders=False):
         calls.append({"classify": classify, "draft": draft})
 
     def create_task(value):

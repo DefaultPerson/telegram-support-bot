@@ -22,6 +22,7 @@ from app.bot.utils.admins import notify_admins, topic_link
 from app.bot.utils.redact import redact
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import UserData
+from app.bot.utils.reminders import end_reply_wait
 from app.bot.utils.texts import TextMessage
 from app.bot.utils.vision import as_data_urls, collect_attachments
 from app.config import Config
@@ -311,6 +312,7 @@ async def run_ai_layer(
     *,
     classify: bool = False,
     draft: bool = True,
+    reminders: bool = False,
 ) -> None:
     """
     Background AI work for one user message: classify the first message (when
@@ -328,7 +330,7 @@ async def run_ai_layer(
     if draft:
         await run_ai_draft(
             provider, config, message, redis, user_data, ai.max_context_messages, album,
-            ai=ai, data_urls=data_urls,
+            ai=ai, data_urls=data_urls, reminders=reminders,
         )
 
 
@@ -353,6 +355,7 @@ async def _auto_send(
     category: str,
     draft: str,
     txt: TextMessage,
+    reminders: bool = False,
 ) -> bool:
     """Send the draft straight to the user, as the Send button would. False if it did not go out."""
     try:
@@ -365,6 +368,8 @@ async def _auto_send(
     # An older draft's Send button must not resend anything now.
     await redis.clear_ai_draft(user_data.id)
     await _log_draft(redis, ai, user_data, category, draft, "auto_sent")
+    if reminders:
+        await end_reply_wait(redis, user_data.id)
     header = txt.get("ai_auto_sent_header").format(category=category_label(ai, category))
     with suppress(TelegramBadRequest):
         await message.bot.send_message(
@@ -387,6 +392,7 @@ async def run_ai_draft(
     *,
     ai: AISection | None = None,
     data_urls: list | None = None,
+    reminders: bool = False,
 ) -> None:
     """
     Draft a suggested reply based on the conversation so far and post it into
@@ -394,6 +400,7 @@ async def run_ai_draft(
 
     With the auto-reply mode on for the user's category the draft goes to the
     user right away and the topic only gets a copy.
+    ``reminders``: such an automatic reply ends the user's wait for a reply.
     """
     if user_data.message_thread_id is None:
         return
@@ -454,7 +461,9 @@ async def run_ai_draft(
         except Exception as ex:  # noqa: BLE001
             logger.warning("Failed to read the auto-reply mode of %s: %s", configured.key, ex)
             auto = False
-        if auto and await _auto_send(config, message, redis, user_data, ai, configured.key, draft, txt):
+        if auto and await _auto_send(
+            config, message, redis, user_data, ai, configured.key, draft, txt, reminders,
+        ):
             return
 
     await redis.set_ai_draft(user_data.id, draft)

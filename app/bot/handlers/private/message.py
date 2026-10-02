@@ -23,6 +23,7 @@ from app.bot.utils.policy_runtime import (
 )
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import UserData
+from app.bot.utils.reminders import reminders_enabled, start_reply_wait
 
 router = Router()
 router.message.filter(F.chat.type == "private", StateFilter(None))
@@ -135,6 +136,12 @@ async def handle_incoming_message(
         await release_first_message()
         raise
 
+    # The message reached the topic: the user now waits for a reply, unless
+    # already waiting. Before the AI task, whose automatic reply ends the wait.
+    reminders = reminders_enabled(policy_engine)
+    if reminders:
+        await start_reply_wait(redis, user_data.id)
+
     # Apply post-forward policy side effects (tags, close, escalate).
     if decision is not None:
         await apply_post_forward(decision, message, redis, user_data, manager.config)
@@ -149,7 +156,7 @@ async def handle_incoming_message(
             asyncio.create_task(
                 run_ai_layer(
                     llm_provider, manager.config, message, redis, user_data, ai, album,
-                    classify=classify, draft=draft,
+                    classify=classify, draft=draft, reminders=reminders,
                 )
             )
 
