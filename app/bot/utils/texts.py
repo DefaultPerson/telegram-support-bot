@@ -142,16 +142,6 @@ class TextMessage(Text):
                 "ai_auto_sent_header": "🤖 Auto-reply sent to the user (category {category}):",
                 "category_admin_notice": "New conversation, {category}: {name}\n{link}",
                 "ai_admins_only": "Only admins can do this.",
-                "ai_stats_disabled": "The draft log is off (ai.log_drafts in the policy).",
-                "ai_stats_usage": "Usage: /ai_stats [days], 1 to 3650",
-                "ai_stats_empty": "No drafts logged for this period.",
-                "ai_stats_header_all": "<b>AI drafts by category, all time:</b>",
-                "ai_stats_header_days": "<b>AI drafts by category, last {days} days:</b>",
-                "ai_stats_row": (
-                    "{category}: {total} total, sent {sent}, skipped {skipped}, "
-                    "manager replied {manager_replied}, auto {auto_sent}; sent share {rate}"
-                ),
-                "ai_stats_note": "Sent share = sent / (sent + skipped + manager replied).",
                 "no_category": "no category",
                 "ai_auto_no_categories": "No categories are configured (ai.categories in the policy).",
                 "ai_auto_usage": "Usage: /ai_auto [&lt;key&gt; on|off]",
@@ -256,16 +246,6 @@ class TextMessage(Text):
                 "ai_auto_sent_header": "🤖 Пользователю отправлен автоответ (категория {category}):",
                 "category_admin_notice": "Новый диалог, {category}: {name}\n{link}",
                 "ai_admins_only": "Доступно только админам.",
-                "ai_stats_disabled": "Журнал черновиков выключен (ai.log_drafts в политике).",
-                "ai_stats_usage": "Использование: /ai_stats [дней], от 1 до 3650",
-                "ai_stats_empty": "За этот период черновиков нет.",
-                "ai_stats_header_all": "<b>Черновики ИИ по категориям, за всё время:</b>",
-                "ai_stats_header_days": "<b>Черновики ИИ по категориям, за {days} дн.:</b>",
-                "ai_stats_row": (
-                    "{category}: всего {total}, отправлено {sent}, пропущено {skipped}, "
-                    "ответил менеджер {manager_replied}, автоответ {auto_sent}; доля отправленных {rate}"
-                ),
-                "ai_stats_note": "Доля отправленных = отправлено / (отправлено + пропущено + ответил менеджер).",
                 "no_category": "без категории",
                 "ai_auto_no_categories": "Категории не настроены (ai.categories в политике).",
                 "ai_auto_usage": "Использование: /ai_auto [&lt;ключ&gt; on|off]",

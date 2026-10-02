@@ -80,7 +80,7 @@ class AISection(BaseModel):
     enabled: bool = False
     system_prompt_path: str | None = None
     max_context_messages: int = 12
-    # Record every draft and what became of it (sent, skipped, ...) for /ai_stats.
+    # Record every draft and what became of it (sent, skipped, ...) for the /ai_auto stats.
     log_drafts: bool = False
     # Empty: the first message is not classified.
     categories: list[AICategory] = Field(default_factory=list)

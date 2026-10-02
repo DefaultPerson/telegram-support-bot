@@ -81,7 +81,7 @@ ai:
   system_prompt_path: config/system_prompt.txt
   max_context_messages: 12
   # Record every draft and what became of it (sent, skipped, manager_replied,
-  # superseded, auto_sent) for the /ai_stats admin command.
+  # superseded, auto_sent) for the stats of the /ai_auto admin command.
   log_drafts: false
   # Classify the user's first message into one of these categories with a
   # separate short LLM request. Empty (the default): no classification.
