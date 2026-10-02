@@ -128,8 +128,9 @@ These options live in the `ai` section of the policy file (so they need
 
 Admin commands in the support group (admins are `BOT_DEV_IDS`):
 
-- `/ai_stats [days]` — per category: total drafts, sent, skipped, manager
-  replied, automatic, and the share of sent drafts. The share counts reviewed
+- `/ai_stats [days]` — per category, over all time or the last 1 to 3650 days:
+  total drafts, sent, skipped, manager replied, automatic, and the share of sent
+  drafts. The share counts reviewed
   drafts only: sent / (sent + skipped + manager replied).
 - `/ai_auto` — every category with its automatic-reply mode and stats.
 - `/ai_auto <key> on|off` — asks for confirmation with the category's stats
