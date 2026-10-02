@@ -279,9 +279,16 @@ def test_ai_stats_needs_the_log():
     assert replies == ["ai_stats_disabled"]
 
 
-def test_ai_stats_rejects_a_bad_period():
-    replies, _ = stats_command("week", engine(log_drafts=True))
+@pytest.mark.parametrize("args", ["week", "0", "-7", "3651", "99999999999", "²"])
+def test_ai_stats_rejects_a_bad_period(args):
+    replies, storage = stats_command(args, engine(log_drafts=True))
     assert replies == ["ai_stats_usage"]
+    assert storage.stats_days == "unset"
+
+
+def test_ai_stats_accepts_the_longest_period():
+    _, storage = stats_command("3650", engine(log_drafts=True))
+    assert storage.stats_days == 3650
 
 
 def test_ai_stats_counts_per_category():

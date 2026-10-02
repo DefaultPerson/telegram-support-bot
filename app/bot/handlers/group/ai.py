@@ -25,6 +25,8 @@ router.callback_query.filter(
 )
 
 EMPTY_STATS = {"total": 0, "sent": 0, "skipped": 0, "manager_replied": 0, "auto_sent": 0}
+# Longest /ai_stats period; far larger ones make the database query fail.
+MAX_STATS_DAYS = 3650
 
 
 def _ai(policy_engine: PolicyEngine | None) -> AISection:
@@ -84,7 +86,7 @@ async def ai_stats_handler(
     args = (command.args or "").strip()
     days = None
     if args:
-        if not args.isdigit() or int(args) == 0:
+        if not args.isdecimal() or not 1 <= int(args) <= MAX_STATS_DAYS:
             await message.reply(manager.text_message.get("ai_stats_usage"))
             return
         days = int(args)
