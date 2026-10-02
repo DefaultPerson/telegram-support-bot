@@ -482,6 +482,18 @@ class RedisStorage:
             )
         return claimed is not None
 
+    async def release_reply_reminder(self, user_id: int, since, level: int, reminded: int) -> None:
+        """Undo a claim whose reminder was not posted, so the next check posts it."""
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE reply_waits SET reminded = $4 "
+                "WHERE user_id = $1 AND since = $2 AND reminded = $3",
+                user_id,
+                since,
+                level,
+                reminded,
+            )
+
     async def clear_reply_waits(self) -> None:
         """Forget every wait: replies were not tracked while reminders were off."""
         async with self.pool.acquire() as conn:

@@ -168,4 +168,6 @@ Waits are stored in PostgreSQL, so a restart only delays the reminders that came
 due meanwhile; a check after a long pause posts one reminder with the full wait.
 Only messages written after the upgrade start a wait, and a start with the
 reminders off (or without a policy) drops the waits on record, so turning the
-reminders on does not remind about old conversations.
+reminders on does not remind about old conversations. A reminder Telegram
+throttles or fails to deliver for a network or server error is retried by the
+next check; other send errors are logged.

@@ -14,6 +14,7 @@ import asyncio
 import logging
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter, TelegramServerError
 from asyncpg import Pool
 
 from app.bot.policy import PolicyEngine
@@ -23,6 +24,9 @@ from app.bot.utils.texts import TextMessage
 from app.config import Config
 
 logger = logging.getLogger(__name__)
+
+# Sends of one reminder that Telegram may throttle before it waits for the next check.
+SEND_ATTEMPTS = 3
 
 
 def reminders_enabled(policy_engine: PolicyEngine | None) -> bool:
@@ -51,21 +55,42 @@ def waited_hours(minutes: int) -> int:
     return max(1, (minutes + 30) // 60)
 
 
+async def _post_reminder(bot: Bot, config: Config, wait: dict) -> None:
+    """Post one reminder, waiting out Telegram's flood limit up to ``SEND_ATTEMPTS`` times."""
+    txt = TextMessage(wait["language_code"] or "ru")
+    text = txt.get("reply_reminder").format(hours=waited_hours(wait["waited_minutes"]))
+    for attempt in range(1, SEND_ATTEMPTS + 1):
+        try:
+            await bot.send_message(
+                chat_id=config.bot.GROUP_ID,
+                message_thread_id=wait["message_thread_id"],
+                text=text,
+            )
+            return
+        except TelegramRetryAfter as ex:
+            if attempt == SEND_ATTEMPTS:
+                raise
+            await asyncio.sleep(ex.retry_after)
+
+
 async def check_reply_waits(
     bot: Bot, config: Config, redis: RedisStorage, section: RemindersSection
 ) -> None:
-    """Post the reminders that are due. A failed send is logged and not retried."""
+    """
+    Post the reminders that are due. A failed send is logged; a temporary
+    failure (flood limit, network, Telegram server) is retried by the next check.
+    """
     waits = await redis.get_due_reply_waits(section.after_minutes, section.skip_categories)
     for wait in waits:
         # Claimed before sending, so a second running instance cannot repeat it.
         if not await redis.claim_reply_reminder(wait["user_id"], wait["since"], wait["level"]):
             continue
-        txt = TextMessage(wait["language_code"] or "ru")
         try:
-            await bot.send_message(
-                chat_id=config.bot.GROUP_ID,
-                message_thread_id=wait["message_thread_id"],
-                text=txt.get("reply_reminder").format(hours=waited_hours(wait["waited_minutes"])),
+            await _post_reminder(bot, config, wait)
+        except (TelegramRetryAfter, TelegramNetworkError, TelegramServerError) as ex:
+            logger.warning("Reply reminder for user %s postponed: %s", wait["user_id"], ex)
+            await redis.release_reply_reminder(
+                wait["user_id"], wait["since"], wait["level"], wait["reminded"]
             )
         except Exception as ex:  # noqa: BLE001
             logger.warning("Failed to post the reply reminder for user %s: %s", wait["user_id"], ex)
