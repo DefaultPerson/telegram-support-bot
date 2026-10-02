@@ -500,8 +500,8 @@ class RedisStorage:
                 outcome,
             )
 
-    async def get_draft_stats(self, days: int | None = None) -> dict[str | None, dict[str, int]]:
-        """Count drafts per category and outcome, optionally over the last ``days`` days."""
+    async def get_draft_stats(self) -> dict[str | None, dict[str, int]]:
+        """Count drafts per category and outcome."""
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
@@ -512,10 +512,8 @@ class RedisStorage:
                        count(*) FILTER (WHERE outcome = 'manager_replied') AS manager_replied,
                        count(*) FILTER (WHERE outcome = 'auto_sent') AS auto_sent
                 FROM ai_draft_log
-                WHERE $1::int IS NULL OR created_at >= now() - make_interval(days => $1::int)
                 GROUP BY category
-                """,
-                days,
+                """
             )
         return {
             row["category"]: {

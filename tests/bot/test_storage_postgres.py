@@ -219,12 +219,11 @@ def test_draft_log_and_stats():
         await storage.resolve_draft(12, "manager_replied")
         await storage.log_draft(13, 113, "payout", "pending draft")
         await storage.log_draft(13, 113, "payout", "auto", outcome="auto_sent")
-        await storage.log_draft(14, 114, "other", "old draft")
+        await storage.log_draft(14, 114, "other", "other draft")
         await storage.resolve_draft(14, "skipped")
 
         async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT user_id, text, outcome, outcome_at FROM ai_draft_log ORDER BY id")
-            await conn.execute("UPDATE ai_draft_log SET created_at = now() - interval '30 days' WHERE user_id = 14")
         assert [(r["user_id"], r["outcome"]) for r in rows] == [
             (11, "superseded"), (11, "sent"), (12, "manager_replied"),
             (13, "superseded"), (13, "auto_sent"), (14, "skipped"),
@@ -235,13 +234,11 @@ def test_draft_log_and_stats():
             return {"total": total, "sent": sent, "skipped": skipped,
                     "manager_replied": manager_replied, "auto_sent": auto_sent}
 
-        recent = {
+        assert await storage.get_draft_stats() == {
             "payout": counts(4, sent=1, auto_sent=1),
             None: counts(1, manager_replied=1),
+            "other": counts(1, skipped=1),
         }
-        assert await storage.get_draft_stats(7) == recent
-        assert await storage.get_draft_stats(3650) == {**recent, "other": counts(1, skipped=1)}
-        assert await storage.get_draft_stats() == await storage.get_draft_stats(3650)
 
     run(scenario)
 
