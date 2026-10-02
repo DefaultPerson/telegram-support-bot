@@ -52,7 +52,7 @@ class _Storage:
         self.modes[category] = enabled
         self.mode_changes.append((category, enabled, updated_by))
 
-    async def get_draft_stats(self, days=None):
+    async def get_draft_stats(self):
         return self.stats
 
     async def get_conversation(self, user_id, limit):
@@ -78,9 +78,11 @@ class _Bot:
     def __init__(self, blocked=False) -> None:
         self.sent: list[dict] = []
         self.blocked = blocked
+        self.blocked_attempts = 0
 
     async def send_message(self, **kwargs):
         if self.blocked and kwargs["chat_id"] == 42:
+            self.blocked_attempts += 1
             raise TelegramForbiddenError(method=None, message="bot was blocked by the user")
         self.sent.append(kwargs)
 
@@ -278,6 +280,7 @@ def test_failed_canned_reply_falls_back_to_a_draft():
 
     bot = draft(storage, engine(canned_replies=CANNED), bot=_Bot(blocked=True))
 
+    assert bot.blocked_attempts == 1
     assert [m["chat_id"] for m in bot.sent] == [GROUP]
     assert "reply_markup" in bot.sent[0]
     assert storage.logged == [("payout", "pending")]
