@@ -22,11 +22,13 @@ class RedisMiddleware(BaseMiddleware):
     handler data for private chats.
     """
 
-    def __init__(self, pool: Pool) -> None:
+    def __init__(self, pool: Pool, keep_unsummarized: bool = False) -> None:
         """
         :param pool: asyncpg connection pool for the user-layer database.
+        :param keep_unsummarized: passed on to :class:`RedisStorage`.
         """
         self.pool = pool
+        self.keep_unsummarized = keep_unsummarized
 
     async def __call__(
             self,
@@ -43,7 +45,7 @@ class RedisMiddleware(BaseMiddleware):
         :return: The result of the handler function.
         """
         # Build the storage repository over the shared connection pool.
-        redis = RedisStorage(self.pool)
+        redis = RedisStorage(self.pool, self.keep_unsummarized)
 
         # Extract the chat and user objects from data
         chat: Chat = data.get("event_chat")
