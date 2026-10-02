@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNetworkError
 
 from app.bot.handlers.group import ai as group_ai
 from app.bot.handlers.group import callback_query as group_callback
@@ -245,6 +245,24 @@ def test_current_or_legacy_draft_is_sent(message_id):
     assert [m["text"] for m in call.bot.sent] == ["Draft text"]
     assert storage.resolved == [(42, "sent")]
     assert storage.draft is None
+
+
+@pytest.mark.parametrize("error,text", [
+    (TelegramForbiddenError(method=None, message="Forbidden: bot was blocked by the user"), "draft_send_blocked"),
+    (TelegramBadRequest(method=None, message="Bad Request: chat not found"), "draft_send_failed"),
+    (TelegramNetworkError(method=None, message="network is down"), "draft_send_failed"),
+])
+def test_failed_send_keeps_the_draft(error, text, caplog):
+    storage = _Storage(draft="Draft text", message_id=101)
+    call = press(_Call("ai:send:42", message_id=101, error=error), storage)
+
+    assert call.answers == [text + " {category}{days}{rate}"]
+    assert call.alerts == [True]
+    assert storage.resolved == []
+    assert storage.conversation == []
+    assert (storage.draft, storage.message_id) == ("Draft text", 101)
+    assert not call.message.buttons_removed
+    assert "Failed to send the AI draft" in caplog.text
 
 
 class _TopicMessage:
