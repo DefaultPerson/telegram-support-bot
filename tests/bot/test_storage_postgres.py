@@ -13,6 +13,7 @@ import uuid
 import asyncpg
 import pytest
 
+from app.bot.utils import reminders
 from app.bot.utils.redis.models import UserData
 from app.bot.utils.redis.redis import RedisStorage, create_schema
 
@@ -287,6 +288,25 @@ def test_reply_waits():
         async with pool.acquire() as conn:
             row = await conn.fetchrow("SELECT since, reminded FROM reply_waits WHERE user_id = 17")
         assert row["reminded"] == 0 and row["since"] > due["since"]
+
+    run(scenario)
+
+
+def test_waits_left_from_before_reminders_were_off_are_dropped():
+    async def scenario(pool, storage):
+        for id_ in (19, 20):
+            await storage.update_user(id_, user(id_, thread_id=100 + id_))
+            await storage.start_reply_wait(id_)
+            await wait_since(pool, id_, 1500)
+
+        # A start with reminders off; managers answer meanwhile, untracked.
+        await reminders.drop_reply_waits(pool)
+        await reminders.drop_reply_waits(pool)
+        # Back on: no reminders about those conversations, new messages count.
+        assert await storage.get_due_reply_waits([180, 1440], []) == []
+        await storage.start_reply_wait(19)
+        await wait_since(pool, 19, 200)
+        assert [row["user_id"] for row in await storage.get_due_reply_waits([180, 1440], [])] == [19]
 
     run(scenario)
 

@@ -71,6 +71,18 @@ async def check_reply_waits(
             logger.warning("Failed to post the reply reminder for user %s: %s", wait["user_id"], ex)
 
 
+async def drop_reply_waits(pool: Pool) -> None:
+    """
+    Reminders are off, so replies are not tracked and the waits on record go
+    stale. Forget them, or turning reminders back on would remind the group of
+    conversations answered meanwhile. Errors are only logged.
+    """
+    try:
+        await RedisStorage(pool).clear_reply_waits()
+    except Exception as ex:  # noqa: BLE001 - never block the startup
+        logger.warning("Failed to clear the reply waits: %s", ex)
+
+
 async def run_reply_reminders(
     bot: Bot, config: Config, pool: Pool, section: RemindersSection
 ) -> None:

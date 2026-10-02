@@ -16,7 +16,7 @@ from .bot.llm import get_provider
 from .bot.middlewares import register_middlewares
 from .bot.policy import PolicyEngine, load_policy
 from .bot.utils.redis import create_schema
-from .bot.utils.reminders import reminders_enabled, run_reply_reminders
+from .bot.utils.reminders import drop_reply_waits, reminders_enabled, run_reply_reminders
 from .config import Config, load_config
 from .logger import setup_logger
 
@@ -73,11 +73,14 @@ async def on_startup(
     apscheduler.start()
     # Remind the support group of users waiting too long (policy `reminders`).
     # A plain task rather than a job in the Redis job store: its state lives in
-    # PostgreSQL, and turning it off leaves no stored job behind.
+    # PostgreSQL, and turning it off leaves no stored job behind. While it is
+    # off, replies are not tracked, so the waits on record are dropped.
     if reminders_enabled(policy_engine):
         dispatcher["reply_reminders_task"] = asyncio.create_task(
             run_reply_reminders(bot, config, pg_pool, policy_engine.reminders)
         )
+    else:
+        await drop_reply_waits(pg_pool)
     # Setup commands when starting up
     await commands.setup(bot, config)
 
