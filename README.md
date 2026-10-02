@@ -126,7 +126,8 @@ dependency with `pip install -r requirements-ai.txt` (or build the image with
 
 Only the newest draft of a user can be sent: a new draft removes the buttons of
 the previous one, and pressing the buttons of an older draft sends nothing and
-answers that it is outdated.
+answers that it is outdated. If Telegram rejects the send (for example, the user
+has blocked the bot), the manager gets an alert and the draft stays pending.
 
 ### Draft log, categories and automatic replies
 

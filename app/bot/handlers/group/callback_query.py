@@ -1,7 +1,8 @@
+import logging
 from contextlib import suppress
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import MagicData
 from aiogram.types import CallbackQuery
 
@@ -9,6 +10,8 @@ from app.bot.manager import Manager
 from app.bot.policy import PolicyEngine
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.reminders import end_reply_wait, reminders_enabled
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 router.callback_query.filter(
@@ -56,14 +59,21 @@ async def ai_draft_callback(
             text = draft[0]
             try:
                 await call.bot.send_message(chat_id=user_id, text=text, parse_mode=None)
-                await redis.append_conversation(user_id, "assistant", text)
-                if log_drafts:
-                    await redis.resolve_draft(user_id, "sent")
-                if reminders_enabled(policy_engine):
-                    await end_reply_wait(redis, user_id)
-                await call.answer(manager.text_message.get("draft_sent"))
-            except TelegramBadRequest:
-                await call.answer(manager.text_message.get("draft_send_failed"), show_alert=True)
+            except TelegramAPIError as ex:
+                # The draft stays pending with its buttons, so it can be sent again.
+                logger.warning("Failed to send the AI draft to user %s: %s", user_id, ex)
+                blocked = isinstance(ex, TelegramForbiddenError)
+                await call.answer(
+                    manager.text_message.get("draft_send_blocked" if blocked else "draft_send_failed"),
+                    show_alert=True,
+                )
+                return
+            await redis.append_conversation(user_id, "assistant", text)
+            if log_drafts:
+                await redis.resolve_draft(user_id, "sent")
+            if reminders_enabled(policy_engine):
+                await end_reply_wait(redis, user_id)
+            await call.answer(manager.text_message.get("draft_sent"))
         else:
             await call.answer(manager.text_message.get("draft_expired"))
         await redis.clear_ai_draft(user_id)
