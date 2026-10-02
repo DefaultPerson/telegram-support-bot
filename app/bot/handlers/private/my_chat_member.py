@@ -35,6 +35,11 @@ async def handle_chat_member_update(
     user_data.state = update.new_chat_member.status
     await redis.update_user(user_data.id, user_data)
 
+    # Users who never wrote have no topic when it is created lazily; their
+    # lifecycle notice would otherwise land in the group's General topic.
+    if user_data.message_thread_id is None and not manager.config.bot.TOPIC_ON_START:
+        return
+
     is_member = user_data.state == ChatMemberStatus.MEMBER
 
     # Let policy suppress the lifecycle notification in the group, if configured.
