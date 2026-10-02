@@ -85,8 +85,9 @@ ai:
   log_drafts: false
   # Classify the user's first message into one of these categories with a
   # separate short LLM request. Empty (the default): no classification.
-  #   key:           short id (up to 40 characters); an unclear answer maps to
-  #                  "other" when such a key exists, otherwise to no category
+  #   key:           short id, up to 40 Latin letters, digits, "_" or "-"; an
+  #                  unclear answer maps to "other" when such a key exists,
+  #                  otherwise to no category
   #   icon:          put before the topic name
   #   needs_human:   automatic replies can never be turned on for it
   #   notify_admins: message every admin in BOT_DEV_IDS with a link to the topic

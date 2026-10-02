@@ -47,8 +47,9 @@ class AICategory(BaseModel):
     """A conversation category the LLM picks for the user's first message."""
     model_config = ConfigDict(extra="forbid")
 
-    # Short: it travels in the /ai_auto confirmation button's callback data.
-    key: str = Field(min_length=1, max_length=40)
+    # Short and ASCII: it travels in the /ai_auto confirmation button's
+    # callback data, which Telegram caps at 64 bytes.
+    key: str = Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")
     title: str
     icon: str = ""
     # Never answered automatically: /ai_auto refuses to switch it on.
