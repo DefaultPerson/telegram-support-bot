@@ -292,6 +292,28 @@ def test_reply_waits():
     run(scenario)
 
 
+def test_released_reminder_is_due_again():
+    async def scenario(pool, storage):
+        await storage.update_user(18, user(18, thread_id=118))
+        await storage.start_reply_wait(18)
+        await wait_since(pool, 18, 1500, reminded=1)
+        (due,) = await storage.get_due_reply_waits([180, 1440], [])
+        assert await storage.claim_reply_reminder(18, due["since"], 2) is True
+
+        await storage.release_reply_reminder(18, due["since"], 2, 1)
+        (again,) = await storage.get_due_reply_waits([180, 1440], [])
+        assert (again["reminded"], again["level"]) == (1, 2)
+
+        # A release after the wait ended or moved on changes nothing.
+        await storage.end_reply_wait(18)
+        await storage.start_reply_wait(18)
+        await storage.release_reply_reminder(18, due["since"], 0, 1)
+        async with pool.acquire() as conn:
+            assert await conn.fetchval("SELECT reminded FROM reply_waits WHERE user_id = 18") == 0
+
+    run(scenario)
+
+
 def test_waits_left_from_before_reminders_were_off_are_dropped():
     async def scenario(pool, storage):
         for id_ in (19, 20):

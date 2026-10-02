@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError, TelegramRetryAfter
 from pydantic import ValidationError
 
 import app.__main__ as bot_main
@@ -43,6 +43,7 @@ class _Storage:
         self.due = list(due)
         self.claim = claim
         self.claims: list[tuple] = []
+        self.releases: list[tuple] = []
         self.draft = "Draft text"
         self.user = make_user()
 
@@ -59,6 +60,9 @@ class _Storage:
     async def claim_reply_reminder(self, user_id, since, level):
         self.claims.append((user_id, level))
         return self.claim
+
+    async def release_reply_reminder(self, user_id, since, level, reminded):
+        self.releases.append((user_id, level, reminded))
 
     async def append_conversation(self, user_id, role, text):
         return None
@@ -98,13 +102,17 @@ class _Storage:
 
 
 class _Bot:
-    def __init__(self, fail_for=()) -> None:
+    def __init__(self, fail_for=(), errors=()) -> None:
         self.sent: list[dict] = []
         self.fail_for = set(fail_for)
+        # Raised by the next sends, one each, before they succeed again.
+        self.errors = list(errors)
 
     async def send_message(self, **kwargs):
         if kwargs.get("message_thread_id") in self.fail_for:
             raise TelegramBadRequest(method=None, message="Bad Request: message thread not found")
+        if self.errors:
+            raise self.errors.pop(0)
         self.sent.append(kwargs)
 
 
@@ -368,6 +376,48 @@ def test_failed_reminder_is_logged_and_the_rest_go_out(caplog):
 
     assert [m["message_thread_id"] for m in bot.sent] == [8]
     assert "user 42" in caplog.text
+    # A topic that is gone will not come back: the reminder is not retried.
+    assert storage.releases == []
+
+
+def flood(seconds=7):
+    return TelegramRetryAfter(method=SimpleNamespace(), message="Too Many Requests", retry_after=seconds)
+
+
+@pytest.fixture()
+def sleeps(monkeypatch):
+    slept = []
+
+    async def fake_sleep(seconds):
+        slept.append(seconds)
+
+    monkeypatch.setattr(reminders.asyncio, "sleep", fake_sleep)
+    return slept
+
+
+def test_flood_limit_is_waited_out(sleeps):
+    storage = _Storage(due=[wait(42, 7, 185, 1), wait(43, 8, 185, 1)])
+    bot = _Bot(errors=[flood(7)])
+
+    check(storage, bot, engine())
+
+    assert sleeps == [7]
+    assert [m["message_thread_id"] for m in bot.sent] == [7, 8]
+    assert storage.releases == []
+
+
+@pytest.mark.parametrize("errors", [
+    [flood()] * reminders.SEND_ATTEMPTS,
+    [TelegramNetworkError(method=None, message="timeout")],
+])
+def test_temporary_failure_leaves_the_reminder_to_the_next_check(sleeps, errors):
+    storage = _Storage(due=[wait(42, 7, 185, 2), wait(43, 8, 185, 1)])
+    bot = _Bot(errors=errors)
+
+    check(storage, bot, engine())
+
+    assert storage.releases == [(42, 2, 1)]
+    assert [m["message_thread_id"] for m in bot.sent] == [8]
 
 
 @pytest.mark.parametrize("policy,running", [
