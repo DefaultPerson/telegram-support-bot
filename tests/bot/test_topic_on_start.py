@@ -43,23 +43,24 @@ def make_manager(topic_on_start: bool):
 
 @pytest.fixture()
 def start_handler(monkeypatch):
-    """The /start handler with the menu stubbed and topic creation recorded."""
+    """The /start handler with the menu stubbed; topic creation and the menu are recorded."""
     created = []
+    shown = []
 
     async def fake_topic(bot, redis, config, user_data):
         created.append(user_data.id)
         return 7
 
-    async def no_window(manager):
-        return None
+    async def main_menu(manager):
+        shown.append("main_menu")
 
     monkeypatch.setattr(command, "get_or_create_forum_topic", fake_topic)
-    monkeypatch.setattr(command.Window, "main_menu", no_window)
-    return command.router.message.handlers[0].callback, created
+    monkeypatch.setattr(command.Window, "main_menu", main_menu)
+    return command.router.message.handlers[0].callback, created, shown
 
 
 def test_start_creates_topic_by_default(start_handler):
-    handler, created = start_handler
+    handler, created, _ = start_handler
     message = SimpleNamespace(bot=_Bot())
 
     asyncio.run(handler(message, make_manager(True), _Storage(), make_user()))
@@ -68,12 +69,14 @@ def test_start_creates_topic_by_default(start_handler):
 
 
 def test_start_only_greets_when_topic_waits_for_first_message(start_handler):
-    handler, created = start_handler
+    handler, created, shown = start_handler
     message = SimpleNamespace(bot=_Bot())
 
     asyncio.run(handler(message, make_manager(False), _Storage(), make_user()))
 
     assert created == []
+    # The greeting is the main menu, whose text the policy's texts.main_menu replaces.
+    assert shown == ["main_menu"]
 
 
 def lifecycle(status: str, user: UserData, topic_on_start: bool, policy_engine=None):
