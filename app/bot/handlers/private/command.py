@@ -47,8 +47,9 @@ async def handler(
         await Window.select_language(manager)
     await manager.delete_message(message)
 
-    # Create the forum topic
-    await get_or_create_forum_topic(message.bot, redis, manager.config, user_data)
+    # Create the forum topic, unless it should wait for the first real message
+    if manager.config.bot.TOPIC_ON_START:
+        await get_or_create_forum_topic(message.bot, redis, manager.config, user_data)
 
 
 @router.message(Command("language"))

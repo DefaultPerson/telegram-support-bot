@@ -13,11 +13,15 @@ class BotConfig:
     - DEV_IDS (list[int]): The developer/admin user IDs (first one is primary).
     - GROUP_ID (int): The group chat ID.
     - BOT_EMOJI_ID (str): The custom emoji ID for the group's topic.
+    - TOPIC_ON_START (bool): Create the user's topic on /start. When off, the
+      topic appears with the first real message, so users who only press
+      /start leave no trace in the group.
     """
     TOKEN: str
     DEV_IDS: list[int]
     GROUP_ID: int
     BOT_EMOJI_ID: str
+    TOPIC_ON_START: bool = True
 
     @property
     def DEV_ID(self) -> int:
@@ -173,6 +177,7 @@ def load_config() -> Config:
             DEV_IDS=dev_ids,
             GROUP_ID=env.int("BOT_GROUP_ID"),
             BOT_EMOJI_ID=env.str("BOT_EMOJI_ID"),
+            TOPIC_ON_START=env.bool("BOT_TOPIC_ON_START", True),
         ),
         redis=RedisConfig(
             HOST=env.str("REDIS_HOST"),

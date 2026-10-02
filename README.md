@@ -7,7 +7,9 @@ Telegram feedback bot for customer support. Messages from private chats are auto
 
 ## Features
 
-- **Forum topics** — a dedicated topic is created for each user in the support group
+- **Forum topics** — a dedicated topic is created for each user in the support group, on `/start` by default;
+  with `BOT_TOPIC_ON_START=false` it waits for the user's first real message, so `/start`-only users and their
+  block/unblock notices never reach the group
 - **Two-way messaging** — user messages go to the topic, staff replies go back to the DM
 - **Media groups** — album support (photos, videos, audio, documents)
 - **Blocking** — `/ban` to block/unblock users
