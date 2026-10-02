@@ -1,13 +1,17 @@
 import asyncio
 import base64
 import logging
+from types import SimpleNamespace
 
 import pytest
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import Chat, Document, Message, PhotoSize
 
+from app.bot.policy.schema import AISection
 from app.bot.types.album import Album
+from app.bot.utils.policy_runtime import run_ai_layer
+from app.bot.utils.redis.models import UserData
 from app.bot.utils.vision import as_data_urls, collect_attachments
 
 DATE = 1788205966
@@ -152,3 +156,65 @@ def test_vision_disabled_downloads_nothing() -> None:
 
     assert asyncio.run(as_data_urls(fake, [("P1", "image/jpeg")], 0, 10_000)) == []
     assert fake.downloaded == []
+
+
+class _DraftBot(_FakeBot):
+    def __init__(self) -> None:
+        super().__init__()
+        self.sent: list[dict] = []
+
+    async def send_message(self, **kwargs):
+        self.sent.append(kwargs)
+
+
+class _DraftStorage:
+    def __init__(self) -> None:
+        self.draft = None
+
+    async def get_conversation(self, user_id, limit):
+        # A bare screenshot leaves no text in the transcript.
+        return []
+
+    async def set_ai_draft(self, user_id, text):
+        self.draft = text
+
+
+class _Provider:
+    def __init__(self) -> None:
+        self.messages: list = []
+
+    async def draft_reply(self, messages):
+        self.messages = messages
+        return "That is the withdrawal screen."
+
+
+def test_screenshot_sent_as_a_document_reaches_the_draft() -> None:
+    from app.config import AIConfig
+
+    ai = AIConfig(
+        PROVIDER="openai_compatible", BASE_URL="", API_KEY="k", MODEL="m",
+        SYSTEM_PROMPT_PATH="", TIMEOUT_S=5, VISION=True,
+    )
+    config = SimpleNamespace(ai=ai, bot=SimpleNamespace(GROUP_ID=-100))
+    bot = _DraftBot()
+    message = SimpleNamespace(
+        bot=bot, text=None, caption=None, photo=None, document=image_document("F1"),
+    )
+    storage = _DraftStorage()
+    user = UserData(
+        message_thread_id=7, message_silent_id=None, message_silent_mode=False,
+        id=42, full_name="User", username="-", language_code="en",
+    )
+    provider = _Provider()
+
+    asyncio.run(run_ai_layer(provider, config, message, storage, user, AISection()))
+
+    assert bot.downloaded == ["F1"]
+    assert provider.messages[-1] == {
+        "role": "user",
+        "content": [{
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{base64.b64encode(PNG).decode()}"},
+        }],
+    }
+    assert storage.draft == "That is the withdrawal screen."
