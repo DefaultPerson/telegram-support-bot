@@ -102,7 +102,8 @@ def test_upgrade_backfills_every_user_who_wrote():
         # Media without a caption leaves no user turn, only the manager's answer.
         await storage.append_conversation(2, "assistant", "Got your screenshot, checking.")
         # A screenshot with a draft still waiting for the manager.
-        await storage.set_ai_draft(3, "Looks like a failed payout.")
+        async with pool.acquire() as conn:
+            await conn.execute("INSERT INTO ai_drafts (user_id, text) VALUES (3, 'Looks like a failed payout.')")
         # 4 only pressed /start: a topic, but nothing written.
         # 5 wrote long ago; the manager's later turns pushed theirs out.
         await storage.append_conversation(5, "user", "hello")
@@ -118,6 +119,8 @@ def test_upgrade_backfills_every_user_who_wrote():
         # Old rows load with the new column in place.
         assert (await storage.get_user(1)).message_thread_id == 101
         assert await storage.get_user_category(1) is None
+        # A draft stored before message ids has none, so any of its buttons sends it.
+        assert await storage.get_ai_draft(3) == ("Looks like a failed payout.", None)
 
     run(scenario, legacy=True)
 
@@ -134,6 +137,31 @@ def test_backfill_runs_only_when_the_table_is_created():
 
         assert await first_messages(pool) == set()
         assert await storage.claim_first_message(6) is True
+
+    run(scenario)
+
+
+def test_draft_message_ids():
+    async def scenario(pool, storage):
+        assert await storage.get_ai_draft(20) is None
+        assert await storage.set_ai_draft(20, "First draft.") is None
+        # Not posted yet: no message may send it.
+        assert await storage.get_ai_draft(20) == ("First draft.", 0)
+        await storage.set_ai_draft_message(20, 501, "First draft.")
+        assert await storage.get_ai_draft(20) == ("First draft.", 501)
+
+        # A newer draft reports the message of the one it replaces.
+        assert await storage.set_ai_draft(20, "Second draft.") == 501
+        assert await storage.get_ai_draft(20) == ("Second draft.", 0)
+        # A late id for the replaced draft does not stick to the newer one.
+        await storage.set_ai_draft_message(20, 777, "First draft.")
+        assert await storage.get_ai_draft(20) == ("Second draft.", 0)
+        await storage.set_ai_draft_message(20, 502, "Second draft.")
+        assert await storage.get_ai_draft(20) == ("Second draft.", 502)
+
+        await storage.clear_ai_draft(20)
+        assert await storage.get_ai_draft(20) is None
+        assert await storage.set_ai_draft(20, "Third draft.") is None
 
     run(scenario)
 

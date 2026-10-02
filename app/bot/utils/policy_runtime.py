@@ -567,7 +567,7 @@ async def run_ai_draft(
         ):
             return
 
-    await redis.set_ai_draft(user_data.id, draft)
+    previous_message_id = await redis.set_ai_draft(user_data.id, draft)
     await _log_draft(redis, ai, user_data, category, draft, "pending")
 
     keyboard = InlineKeyboardMarkup(
@@ -581,11 +581,25 @@ async def run_ai_draft(
     if category is not None:
         header += "\n" + txt.get("ai_draft_category").format(category=category_label(ai, category))
 
+    posted = None
     with suppress(TelegramBadRequest):
-        await message.bot.send_message(
+        posted = await message.bot.send_message(
             chat_id=config.bot.GROUP_ID,
             message_thread_id=user_data.message_thread_id,
             text=f"{header}\n\n{draft}",
             reply_markup=keyboard,
             parse_mode=None,
         )
+    if posted is not None:
+        # Only this message's buttons may send the draft from now on.
+        await redis.set_ai_draft_message(user_data.id, posted.message_id, draft)
+    if previous_message_id:
+        await _drop_draft_buttons(message.bot, config.bot.GROUP_ID, previous_message_id)
+
+
+async def _drop_draft_buttons(bot, chat_id: int, message_id: int) -> None:
+    """Remove the Send/Skip buttons of a replaced draft. Best-effort: errors are logged."""
+    try:
+        await bot.edit_message_reply_markup(chat_id=chat_id, message_id=message_id, reply_markup=None)
+    except TelegramAPIError as ex:
+        logger.warning("Failed to remove the buttons of draft message %s: %s", message_id, ex)

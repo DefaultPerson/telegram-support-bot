@@ -38,12 +38,25 @@ async def ai_draft_callback(
         await call.answer()
         return
 
+    if action not in ("send", "skip"):
+        await call.answer()
+        return
+
+    draft = await redis.get_ai_draft(user_id)
+    # A newer draft replaced the one this message shows: its buttons must not
+    # send or drop the newer one. Drafts stored without a message id act as before.
+    if draft is not None and draft[1] is not None and draft[1] != call.message.message_id:
+        await call.answer(manager.text_message.get("draft_stale"))
+        with suppress(TelegramBadRequest):
+            await call.message.edit_reply_markup(reply_markup=None)
+        return
+
     if action == "send":
-        draft = await redis.get_ai_draft(user_id)
         if draft:
+            text = draft[0]
             try:
-                await call.bot.send_message(chat_id=user_id, text=draft, parse_mode=None)
-                await redis.append_conversation(user_id, "assistant", draft)
+                await call.bot.send_message(chat_id=user_id, text=text, parse_mode=None)
+                await redis.append_conversation(user_id, "assistant", text)
                 if log_drafts:
                     await redis.resolve_draft(user_id, "sent")
                 if reminders_enabled(policy_engine):
@@ -57,13 +70,10 @@ async def ai_draft_callback(
         with suppress(TelegramBadRequest):
             await call.message.edit_reply_markup(reply_markup=None)
 
-    elif action == "skip":
+    else:
         await redis.clear_ai_draft(user_id)
         if log_drafts:
             await redis.resolve_draft(user_id, "skipped")
         with suppress(TelegramBadRequest):
             await call.message.delete()
         await call.answer(manager.text_message.get("draft_skipped"))
-
-    else:
-        await call.answer()

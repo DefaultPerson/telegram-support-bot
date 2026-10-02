@@ -83,7 +83,7 @@ class _Storage:
         return self.user
 
     async def get_ai_draft(self, user_id):
-        return self.draft
+        return None if self.draft is None else (self.draft, None)
 
     async def set_ai_draft(self, user_id, text):
         self.draft = text
