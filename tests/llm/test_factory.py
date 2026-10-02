@@ -34,3 +34,7 @@ def test_max_tokens_defaults_to_a_bounded_value():
 def test_unknown_provider_raises():
     with pytest.raises(ValueError):
         get_provider(make_cfg(PROVIDER="bogus", API_KEY="sk-test"))
+
+
+def test_reasoning_effort_is_off_by_default():
+    assert make_cfg().REASONING_EFFORT == ""

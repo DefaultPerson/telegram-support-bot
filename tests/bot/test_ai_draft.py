@@ -126,6 +126,7 @@ def _rate_limited_provider(wait_ms: int, timeout: int):
     )
     provider._model = "test-model"
     provider._max_tokens = 256
+    provider._reasoning_effort = ""
     return provider, calls
 
 
