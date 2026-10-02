@@ -7,6 +7,7 @@ import pytest
 from aiogram.exceptions import TelegramBadRequest
 from pydantic import ValidationError
 
+import app.__main__ as bot_main
 from app.bot.handlers.group import callback_query as group_callback
 from app.bot.handlers.group import message as group_message
 from app.bot.handlers.private import message as private_message
@@ -367,3 +368,50 @@ def test_failed_reminder_is_logged_and_the_rest_go_out(caplog):
 
     assert [m["message_thread_id"] for m in bot.sent] == [8]
     assert "user 42" in caplog.text
+
+
+@pytest.mark.parametrize("policy,running", [
+    (None, False), (engine(enabled=False), False), (engine(), True),
+])
+def test_startup_drops_the_waits_while_reminders_are_off(monkeypatch, policy, running):
+    calls = []
+
+    async def fake_drop(pool):
+        calls.append("drop")
+
+    async def fake_run(*args):
+        calls.append("run")
+
+    async def fake_setup(bot, config):
+        return None
+
+    monkeypatch.setattr(bot_main, "drop_reply_waits", fake_drop)
+    monkeypatch.setattr(bot_main, "run_reply_reminders", fake_run)
+    monkeypatch.setattr(bot_main.commands, "setup", fake_setup)
+    dispatcher = {}
+
+    async def start():
+        await bot_main.on_startup(
+            SimpleNamespace(start=lambda: None), dispatcher, None, None, object(), policy
+        )
+        task = dispatcher.get("reply_reminders_task")
+        if task is not None:
+            await task
+
+    asyncio.run(start())
+
+    assert calls == (["run"] if running else ["drop"])
+
+
+def test_dropping_the_waits_never_blocks_the_startup(monkeypatch, caplog):
+    class _Failing:
+        def __init__(self, pool):
+            pass
+
+        async def clear_reply_waits(self):
+            raise OSError("database is down")
+
+    monkeypatch.setattr(reminders, "RedisStorage", _Failing)
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(reminders.drop_reply_waits(object()))
+    assert "database is down" in caplog.text

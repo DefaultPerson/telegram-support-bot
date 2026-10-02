@@ -481,3 +481,8 @@ class RedisStorage:
                 level,
             )
         return claimed is not None
+
+    async def clear_reply_waits(self) -> None:
+        """Forget every wait: replies were not tracked while reminders were off."""
+        async with self.pool.acquire() as conn:
+            await conn.execute("DELETE FROM reply_waits")

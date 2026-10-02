@@ -117,7 +117,8 @@ ai:
 # user's first message after the last reply they got (a manager's delivered
 # message, a draft sent with its button, an automatic reply of a category);
 # policy auto-replies and /template do not count. Banned users, silent mode,
-# closed topics and users without a topic are never reminded about.
+# closed topics and users without a topic are never reminded about. Replies
+# are not tracked while this is off, so a start with it off drops the waits.
 reminders:
   enabled: false
   # One reminder per threshold and wait, in minutes since the wait started.
