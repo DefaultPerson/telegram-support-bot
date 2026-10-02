@@ -78,6 +78,10 @@ with `all` / `any`. Actions: `auto_reply`, `set_tag`, `close_topic`, `escalate`,
 `suppress_group_notify`, `suppress_topic_creation`. See
 `config/policy.example.yaml` for a documented example.
 
+On upgrade, users who wrote earlier are recognised by their stored transcript or
+pending AI draft. One who only ever sent media without a caption and never got a
+text reply is taken for new, so their next message counts as the first.
+
 `auto_reply` options (defaults keep the old behaviour):
 
 | Option | Default | Description |
