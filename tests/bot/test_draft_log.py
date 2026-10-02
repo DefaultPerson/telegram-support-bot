@@ -28,8 +28,9 @@ def make_user(silent: bool = False) -> UserData:
 class _Storage:
     """In-memory stand-in for the draft-related part of RedisStorage."""
 
-    def __init__(self, draft: str | None = "Draft text", stats=None) -> None:
+    def __init__(self, draft: str | None = "Draft text", stats=None, message_id: int | None = None) -> None:
         self.draft = draft
+        self.message_id = message_id
         self.logged: list[tuple] = []
         self.resolved: list[tuple] = []
         self.conversation: list[tuple] = []
@@ -40,13 +41,19 @@ class _Storage:
         return [{"role": "user", "content": "where is my payout?"}]
 
     async def set_ai_draft(self, user_id, text):
-        self.draft = text
+        previous = self.message_id if self.draft is not None else None
+        self.draft, self.message_id = text, 0
+        return previous
+
+    async def set_ai_draft_message(self, user_id, message_id, text):
+        if self.draft == text:
+            self.message_id = message_id
 
     async def get_ai_draft(self, user_id):
-        return self.draft
+        return None if self.draft is None else (self.draft, self.message_id)
 
     async def clear_ai_draft(self, user_id):
-        self.draft = None
+        self.draft = self.message_id = None
 
     async def append_conversation(self, user_id, role, text):
         self.conversation.append((role, text))
@@ -69,11 +76,22 @@ class _Storage:
 
 
 class _Bot:
-    def __init__(self) -> None:
+    def __init__(self, error: Exception | None = None, edit_error: Exception | None = None) -> None:
         self.sent: list[dict] = []
+        self.edited: list[dict] = []
+        self.error = error
+        self.edit_error = edit_error
 
     async def send_message(self, **kwargs):
+        if self.error is not None:
+            raise self.error
         self.sent.append(kwargs)
+        return SimpleNamespace(message_id=100 + len(self.sent))
+
+    async def edit_message_reply_markup(self, **kwargs):
+        if self.edit_error is not None:
+            raise self.edit_error
+        self.edited.append(kwargs)
 
 
 class _Provider:
@@ -93,8 +111,8 @@ def ai_config():
     )
 
 
-def draft(storage, policy, provider_reply="Payouts go out on Fridays."):
-    bot = _Bot()
+def draft(storage, policy, provider_reply="Payouts go out on Fridays.", bot=None):
+    bot = bot or _Bot()
     config = SimpleNamespace(ai=ai_config(), bot=SimpleNamespace(GROUP_ID=-100, DEV_IDS=[ADMIN]))
     message = SimpleNamespace(bot=bot, text="where is my payout?", caption=None)
     asyncio.run(run_ai_draft(
@@ -125,22 +143,29 @@ def manager(admin_id=ADMIN):
 
 
 class _CallbackMessage:
+    def __init__(self, message_id: int) -> None:
+        self.message_id = message_id
+        self.buttons_removed = False
+        self.deleted = False
+
     async def edit_reply_markup(self, reply_markup=None):
-        return None
+        self.buttons_removed = True
 
     async def delete(self):
-        return None
+        self.deleted = True
 
 
 class _Call:
-    def __init__(self, data: str) -> None:
+    def __init__(self, data: str, message_id: int = 101, error: Exception | None = None) -> None:
         self.data = data
-        self.bot = _Bot()
-        self.message = _CallbackMessage()
+        self.bot = _Bot(error)
+        self.message = _CallbackMessage(message_id)
         self.answers: list = []
+        self.alerts: list = []
 
     async def answer(self, text=None, show_alert=False):
         self.answers.append(text)
+        self.alerts.append(show_alert)
 
 
 @pytest.mark.parametrize("action,outcome", [("send", "sent"), ("skip", "skipped")])
@@ -165,6 +190,61 @@ def test_expired_draft_is_not_marked_sent():
         _Call("ai:send:42"), manager(), storage, engine(log_drafts=True)
     ))
     assert storage.resolved == []
+
+
+def press(call: _Call, storage: _Storage) -> _Call:
+    asyncio.run(group_callback.ai_draft_callback(call, manager(), storage, engine(log_drafts=True)))
+    return call
+
+
+def test_new_draft_drops_the_buttons_of_the_previous_one():
+    storage = _Storage(draft=None)
+    bot = _Bot()
+    draft(storage, engine(log_drafts=True), "First draft.", bot)
+    draft(storage, engine(log_drafts=True), "Second draft.", bot)
+
+    assert storage.draft == "Second draft."
+    assert storage.message_id == 102
+    assert bot.edited == [{"chat_id": -100, "message_id": 101, "reply_markup": None}]
+
+
+def test_failing_to_drop_old_buttons_is_only_logged(caplog):
+    storage = _Storage(draft="First draft.", message_id=50)
+    bot = _Bot(edit_error=TelegramBadRequest(method=None, message="Bad Request: message to edit not found"))
+    draft(storage, engine(), "Second draft.", bot)
+
+    assert storage.message_id == 101
+    assert "message to edit not found" in caplog.text
+
+
+@pytest.mark.parametrize("action", ["send", "skip"])
+def test_old_draft_buttons_do_nothing(action):
+    storage = _Storage(draft="Newest draft", message_id=102)
+    call = press(_Call(f"ai:{action}:42", message_id=101), storage)
+
+    assert call.bot.sent == []
+    assert call.answers == ["draft_stale {category}{days}{rate}"]
+    assert call.message.buttons_removed and not call.message.deleted
+    # The newest draft stays pending, and so does its log record.
+    assert (storage.draft, storage.message_id) == ("Newest draft", 102)
+    assert storage.resolved == []
+
+
+def test_draft_still_being_posted_is_not_sent_by_old_buttons():
+    storage = _Storage(draft="Newest draft", message_id=0)
+    call = press(_Call("ai:send:42", message_id=101), storage)
+    assert call.bot.sent == []
+    assert storage.draft == "Newest draft"
+
+
+@pytest.mark.parametrize("message_id", [None, 101])
+def test_current_or_legacy_draft_is_sent(message_id):
+    storage = _Storage(draft="Draft text", message_id=message_id)
+    call = press(_Call("ai:send:42", message_id=101), storage)
+
+    assert [m["text"] for m in call.bot.sent] == ["Draft text"]
+    assert storage.resolved == [(42, "sent")]
+    assert storage.draft is None
 
 
 class _TopicMessage:

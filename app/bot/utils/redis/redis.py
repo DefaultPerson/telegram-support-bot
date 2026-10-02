@@ -7,7 +7,8 @@ asyncpg. Redis is used only for aiogram FSM and the apscheduler job store.
 Tables (created idempotently by :func:`create_schema`):
 - ``users``         — rich support-user records (``UserData``); the
   ``message_thread_id`` unique index replaces the old ``users_index_*`` hashes.
-- ``ai_drafts``     — pending AI draft reply per user.
+- ``ai_drafts``     — pending AI draft reply per user, with the id of the group
+  message that shows it (0 while it is being posted, NULL for older rows).
 - ``conversations`` — rolling per-user transcript (trimmed to ``CONV_MAX``).
 - ``auto_replies_sent`` — once-only policy auto-replies already sent per user.
 - ``first_messages`` — users who have already sent their first message.
@@ -135,6 +136,9 @@ async def create_schema(pool: Pool) -> None:
                     "ON CONFLICT DO NOTHING"
                 )
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS category TEXT")
+        # The group message with the draft's buttons: only that message may send
+        # it. NULL for drafts stored before the column existed.
+        await conn.execute("ALTER TABLE ai_drafts ADD COLUMN IF NOT EXISTS message_id BIGINT")
         await conn.execute(
             """
             CREATE TABLE IF NOT EXISTS ai_draft_log (
@@ -281,22 +285,41 @@ class RedisStorage:
             rows = await conn.fetch("SELECT id FROM users")
         return [int(row["id"]) for row in rows]
 
-    async def set_ai_draft(self, user_id: int, text: str) -> None:
-        """Store a pending AI draft reply for the given user."""
+    async def set_ai_draft(self, user_id: int, text: str) -> int | None:
+        """
+        Store a pending AI draft reply for the given user.
+
+        Its message id is 0 until :meth:`set_ai_draft_message` records the
+        posted message, so no button can send it before then. Returns the
+        message id of the draft it replaces, if there was one.
+        """
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO ai_drafts (user_id, text) VALUES ($1, $2) "
-                "ON CONFLICT (user_id) DO UPDATE SET text = EXCLUDED.text",
+            return await conn.fetchval(
+                "WITH previous AS (SELECT message_id FROM ai_drafts WHERE user_id = $1) "
+                "INSERT INTO ai_drafts (user_id, text, message_id) VALUES ($1, $2, 0) "
+                "ON CONFLICT (user_id) DO UPDATE SET text = EXCLUDED.text, message_id = 0 "
+                "RETURNING (SELECT message_id FROM previous)",
                 user_id,
                 text,
             )
 
-    async def get_ai_draft(self, user_id: int) -> str | None:
-        """Retrieve the pending AI draft reply for the given user, if any."""
+    async def set_ai_draft_message(self, user_id: int, message_id: int, text: str) -> None:
+        """Record the group message showing the draft, unless a newer draft replaced it."""
         async with self.pool.acquire() as conn:
-            return await conn.fetchval(
-                "SELECT text FROM ai_drafts WHERE user_id = $1", user_id
+            await conn.execute(
+                "UPDATE ai_drafts SET message_id = $2 WHERE user_id = $1 AND text = $3",
+                user_id,
+                message_id,
+                text,
             )
+
+    async def get_ai_draft(self, user_id: int) -> tuple[str, int | None] | None:
+        """The pending AI draft reply for the given user and its group message id, if any."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT text, message_id FROM ai_drafts WHERE user_id = $1", user_id
+            )
+        return None if row is None else (row["text"], row["message_id"])
 
     async def clear_ai_draft(self, user_id: int) -> None:
         """Remove the pending AI draft reply for the given user."""

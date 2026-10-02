@@ -124,6 +124,10 @@ reply is posted into the topic with **Send / Skip** buttons. Install the extra
 dependency with `pip install -r requirements-ai.txt` (or build the image with
 `--build-arg INSTALL_AI=1`).
 
+Only the newest draft of a user can be sent: a new draft removes the buttons of
+the previous one, and pressing the buttons of an older draft sends nothing and
+answers that it is outdated.
+
 ### Draft log, categories and automatic replies
 
 These options live in the `ai` section of the policy file (so they need
