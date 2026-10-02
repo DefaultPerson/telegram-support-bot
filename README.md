@@ -72,9 +72,17 @@ POLICY_CONFIG_PATH=config/policy.yaml
 
 Matchers: `event_type` (`user_message` | `user_started` | `user_stopped` |
 `topic_created`), `keywords_any`, `regex`, `message_length`, `has_link`,
-combined with `all` / `any`. Actions: `auto_reply`, `set_tag`, `close_topic`,
-`escalate`, `suppress_group_notify`, `suppress_topic_creation`. See
+`first_message` (true only for the user's very first message), combined with
+`all` / `any`. Actions: `auto_reply`, `set_tag`, `close_topic`, `escalate`,
+`suppress_group_notify`, `suppress_topic_creation`. See
 `config/policy.example.yaml` for a documented example.
+
+`auto_reply` options (defaults keep the old behaviour):
+
+| Option | Default | Description |
+|---|---|---|
+| `once` | `defaults.auto_reply_once` (`false`) | Send the template to a user only once; remembered in PostgreSQL per user and template key |
+| `suppress_draft` | `true` | Any auto-reply skips the LLM draft; `false` keeps the draft (for "message received" notices) and keeps the notice out of the draft's transcript |
 
 Manager commands in a topic: `/template <key>`, `/tag [name]`, `/close`,
 `/escalate`.

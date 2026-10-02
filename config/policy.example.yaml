@@ -11,6 +11,8 @@ version: 1
 
 defaults:
   language_fallback: en
+  # true: auto_reply actions without their own `once` are sent to a user only once.
+  auto_reply_once: false
 
 variables:
   rules_url: "https://example.com/rules"
@@ -19,6 +21,9 @@ templates:
   rules_link:
     en: "Please read the rules first: {rules_url}"
     ru: "Пожалуйста, ознакомьтесь с правилами: {rules_url}"
+  received:
+    en: "Thanks, your message has reached us. We will answer as soon as we can; no need to write again."
+    ru: "Спасибо, сообщение получено. Ответим, как только сможем, писать повторно не нужно."
 
 # Rules are evaluated top-to-bottom; actions of every matching rule are applied.
 #
@@ -28,11 +33,18 @@ templates:
 #   regex:          a regular expression tested against the message text
 #   message_length: {min: N, max: N}
 #   has_link:       true|false
+#   first_message:  true|false  (true only for the user's very first message)
 #   all: [...] / any: [...]
 #
 # Actions:
 #   suppress_topic_creation, suppress_group_notify, auto_reply (template_key),
 #   close_topic, escalate
+#
+# auto_reply options:
+#   once:           true sends the template to a user only once (default:
+#                   defaults.auto_reply_once)
+#   suppress_draft: false keeps the LLM draft for this message; by default any
+#                   auto-reply counts as an answer and skips the draft
 rules:
   - id: skip_lifecycle
     when:
@@ -47,6 +59,18 @@ rules:
     actions:
       - type: auto_reply
         template_key: rules_link
+        once: true
+
+  # A "message received" notice after the first message; the manager still
+  # gets an AI draft for it.
+  - id: first_message_notice
+    when:
+      event_type: user_message
+      first_message: true
+    actions:
+      - type: auto_reply
+        template_key: received
+        suppress_draft: false
 
 # Optional LLM layer. Real on/off switch is the AI_PROVIDER env var.
 # When enabled, the bot drafts a reply (based on the conversation so far) and

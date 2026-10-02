@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .context import EvalContext
-from .decision import Decision
+from .decision import AutoReply, Decision
 from .schema import Action, PolicyDocument
 
 
@@ -38,6 +38,12 @@ def apply_action(action: Action, ctx: EvalContext, doc: PolicyDocument, decision
     elif action.type == "auto_reply":
         if not action.template_key:
             raise ValueError("auto_reply action requires 'template_key'")
+        once = doc.defaults.auto_reply_once if action.once is None else action.once
         decision.auto_replies.append(
-            render_template(doc, action.template_key, ctx.language)
+            AutoReply(
+                text=render_template(doc, action.template_key, ctx.language),
+                template_key=action.template_key,
+                once=once,
+                suppress_draft=action.suppress_draft,
+            )
         )

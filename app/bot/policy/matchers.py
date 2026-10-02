@@ -56,4 +56,7 @@ def _match_leaf(key: str, value: Any, ctx: EvalContext) -> bool:
         present = _LINK_RE.search(ctx.text) is not None
         return present == bool(value)
 
+    if key == "first_message":
+        return ctx.first_message == bool(value)
+
     raise ValueError(f"Unknown matcher: {key!r}")

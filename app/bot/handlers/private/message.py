@@ -76,12 +76,14 @@ async def handle_incoming_message(
 
     # Record the incoming message in the conversation transcript (LLM context).
     await redis.append_conversation(user_data.id, "user", message_text(message))
+    # Remember that the user has written (drives the `first_message` matcher).
+    first_message = await redis.claim_first_message(user_data.id)
 
     # Evaluate declarative policy before forwarding, if enabled.
     decision = None
     if policy_engine is not None:
-        decision = policy_engine.evaluate(build_message_context(message, user_data))
-        await apply_auto_replies(decision, message)
+        decision = policy_engine.evaluate(build_message_context(message, user_data, first_message))
+        await apply_auto_replies(decision, message, redis, user_data)
         if decision.suppress_topic_creation:
             return
 
@@ -127,7 +129,7 @@ async def handle_incoming_message(
         await apply_post_forward(decision, message, redis, user_data, manager.config)
 
     # Offer an AI-drafted reply to the manager, unless policy already auto-answered.
-    if llm_provider is not None and not (decision and decision.auto_replies):
+    if llm_provider is not None and not (decision and decision.suppresses_draft):
         max_context = policy_engine.ai.max_context_messages if policy_engine else 12
         asyncio.create_task(
             run_ai_draft(
