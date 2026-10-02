@@ -41,9 +41,15 @@ def test_unknown_answer_without_other_means_no_category():
     assert parse_category("refund", categories(*CATEGORIES[:2])) is None
 
 
-def test_category_key_is_short_enough_for_callback_data():
+@pytest.mark.parametrize("key", ["k" * 41, "", "выплаты", "payout💸", "pay out", "a:b"])
+def test_category_key_fits_callback_data(key):
     with pytest.raises(ValueError):
-        AICategory(key="k" * 41, title="Too long")
+        AICategory(key=key, title="Bad key")
+
+
+def test_longest_callback_data_fits_telegram_limit():
+    category = AICategory(key="Payout_and-refund_" + "x" * 22, title="Long")
+    assert len(f"ai_auto:off:{category.key}".encode()) <= 64
 
 
 def test_topic_link():

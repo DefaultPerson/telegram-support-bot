@@ -122,7 +122,7 @@ These options live in the `ai` section of the policy file (so they need
 | Option | Default | Description |
 |---|---|---|
 | `log_drafts` | `false` | Record every draft and its outcome in PostgreSQL: `sent` (Send button), `skipped` (Skip), `manager_replied` (the manager wrote to the user in the topic while the draft was pending), `superseded` (a newer draft for the same user), `auto_sent` (automatic reply) |
-| `categories` | `[]` | Classify the user's first message with a separate short LLM request. Each item: `key`, `title`, `icon`, `needs_human`, `notify_admins`. The icon goes before the topic name, the category is shown in the draft header and stored in the log, and `notify_admins` messages every admin in `BOT_DEV_IDS` with a link to the topic. An unclear answer maps to `other` when that key exists |
+| `categories` | `[]` | Classify the user's first message with a separate short LLM request. Each item: `key` (up to 40 Latin letters, digits, `_` or `-`), `title`, `icon`, `needs_human`, `notify_admins`. The icon goes before the topic name, the category is shown in the draft header and stored in the log, and `notify_admins` messages every admin in `BOT_DEV_IDS` with a link to the topic. An unclear answer maps to `other` when that key exists |
 | `auto_threshold` | `0.95` | `/ai_auto` warns before enabling a category whose share of sent drafts is lower |
 | `auto_min_drafts` | `20` | ... or which has fewer reviewed drafts than this |
 
