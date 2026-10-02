@@ -442,7 +442,8 @@ def test_startup_drops_the_waits_while_reminders_are_off(monkeypatch, policy, ru
 
     async def start():
         await bot_main.on_startup(
-            SimpleNamespace(start=lambda: None), dispatcher, None, None, object(), policy
+            SimpleNamespace(start=lambda: None), dispatcher,
+            SimpleNamespace(bot=SimpleNamespace(HEARTBEAT_FILE="")), None, object(), policy,
         )
         task = dispatcher.get("reply_reminders_task")
         if task is not None:

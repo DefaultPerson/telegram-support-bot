@@ -15,6 +15,7 @@ from .bot.handlers import include_routers
 from .bot.llm import get_provider
 from .bot.middlewares import register_middlewares
 from .bot.policy import PolicyEngine, load_policy
+from .bot.utils.heartbeat import run_heartbeat
 from .bot.utils.redis import create_schema
 from .bot.utils.reminders import drop_reply_waits, reminders_enabled, run_reply_reminders
 from .config import Config, load_config
@@ -41,6 +42,9 @@ async def on_shutdown(
     reminders_task = dispatcher.get("reply_reminders_task")
     if reminders_task is not None:
         reminders_task.cancel()
+    heartbeat_task = dispatcher.get("heartbeat_task")
+    if heartbeat_task is not None:
+        heartbeat_task.cancel()
     # Stop apscheduler
     apscheduler.shutdown()
     # Delete commands and close storages when shutting down
@@ -71,6 +75,11 @@ async def on_startup(
     """
     # Start apscheduler
     apscheduler.start()
+    # Heartbeat file for the container healthcheck (HEARTBEAT_FILE, empty = off)
+    if config.bot.HEARTBEAT_FILE:
+        dispatcher["heartbeat_task"] = asyncio.create_task(
+            run_heartbeat(bot, config.bot.HEARTBEAT_FILE)
+        )
     # Remind the support group of users waiting too long (policy `reminders`).
     # A plain task rather than a job in the Redis job store: its state lives in
     # PostgreSQL, and turning it off leaves no stored job behind. While it is

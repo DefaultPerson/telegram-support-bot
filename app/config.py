@@ -16,12 +16,15 @@ class BotConfig:
     - TOPIC_ON_START (bool): Create the user's topic on /start. When off, the
       topic appears with the first real message, so users who only press
       /start leave no trace in the group.
+    - HEARTBEAT_FILE (str): File the bot rewrites every minute while the Bot
+      API answers, for the container healthcheck. Empty turns it off.
     """
     TOKEN: str
     DEV_IDS: list[int]
     GROUP_ID: int
     BOT_EMOJI_ID: str
     TOPIC_ON_START: bool = True
+    HEARTBEAT_FILE: str = "/tmp/bot-heartbeat"
 
     @property
     def DEV_ID(self) -> int:
@@ -182,6 +185,7 @@ def load_config() -> Config:
             GROUP_ID=env.int("BOT_GROUP_ID"),
             BOT_EMOJI_ID=env.str("BOT_EMOJI_ID"),
             TOPIC_ON_START=env.bool("BOT_TOPIC_ON_START", True),
+            HEARTBEAT_FILE=env.str("HEARTBEAT_FILE", "/tmp/bot-heartbeat").strip(),
         ),
         redis=RedisConfig(
             HOST=env.str("REDIS_HOST"),
