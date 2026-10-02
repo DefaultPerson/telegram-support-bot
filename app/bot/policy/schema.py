@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.bot.utils.texts import SUPPORTED_LANGUAGES, TextMessage
+
 ActionType = Literal[
     "suppress_topic_creation",
     "suppress_group_notify",
@@ -123,6 +125,19 @@ class PolicyDocument(BaseModel):
     rules: list[Rule] = Field(default_factory=list)
     ai: AISection = Field(default_factory=AISection)
     reminders: RemindersSection = Field(default_factory=RemindersSection)
+    # Replacements for the bot's built-in texts: {key: {language: text}}.
+    texts: dict[str, dict[str, str]] = Field(default_factory=dict)
+
+    @field_validator("texts")
+    @classmethod
+    def _known_texts(cls, value: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+        unknown = sorted(set(value) - TextMessage.keys())
+        if unknown:
+            raise ValueError(f"texts: unknown keys {unknown}")
+        languages = sorted({lang for texts in value.values() for lang in texts} - set(SUPPORTED_LANGUAGES))
+        if languages:
+            raise ValueError(f"texts: unsupported languages {languages}")
+        return value
 
     @model_validator(mode="after")
     def _known_skip_categories(self) -> "PolicyDocument":

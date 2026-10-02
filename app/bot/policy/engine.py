@@ -21,6 +21,10 @@ class PolicyEngine:
     def reminders(self) -> RemindersSection:
         return self.document.reminders
 
+    @property
+    def texts(self) -> dict[str, dict[str, str]]:
+        return self.document.texts
+
     def evaluate(self, ctx: EvalContext) -> Decision:
         """
         Apply every matching rule in declaration order and aggregate the

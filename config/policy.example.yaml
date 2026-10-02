@@ -138,3 +138,14 @@ reminders:
   # Keys of ai.categories whose conversations get no reminders.
   skip_categories: []
   check_interval_minutes: 10
+
+# Optional replacements for the bot's built-in texts (app/bot/utils/texts.py),
+# per key and language (en, ru). Telegram HTML, like the built-in texts; keep
+# their {placeholders} (`variables` are not applied here). An unknown key or language fails the policy load; a key
+# or language left out keeps the built-in text. main_menu is the welcome on
+# /start and may use {full_name}.
+texts: {}
+# texts:
+#   main_menu:
+#     en: "<b>Hello, {full_name}!</b> Write your question.\n\nRules: https://example.com/rules"
+#     ru: "<b>Здравствуйте, {full_name}!</b> Напишите ваш вопрос.\n\nПравила: https://example.com/rules"

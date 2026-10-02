@@ -101,6 +101,18 @@ text reply is taken for new, so their next message counts as the first.
 Manager commands in a topic: `/template <key>`, `/tag [name]`, `/close`,
 `/escalate`.
 
+The optional `texts` section replaces the bot's built-in texts
+(`app/bot/utils/texts.py`) per key and language, for example the `/start`
+welcome `main_menu` (may use `{full_name}`). An unknown key or language fails
+the policy load; without the section every text stays built in.
+
+```yaml
+texts:
+  main_menu:
+    en: "<b>Hello!</b> Write your question and we will reply as soon as possible."
+    ru: "<b>Здравствуйте!</b> Напишите ваш вопрос — ответим в ближайшее время."
+```
+
 ### LLM drafts
 
 | Env var | Default | Description |

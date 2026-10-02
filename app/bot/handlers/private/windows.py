@@ -36,7 +36,7 @@ class Window:
         :return: None
         """
         text = manager.text_message.get("select_language")
-        with suppress(IndexError, KeyError):
+        with suppress(IndexError, KeyError, ValueError):
             text = text.format(full_name=hbold(manager.user.full_name))
         reply_markup = select_language_markup()
         await manager.send_message(text, reply_markup=reply_markup)
@@ -50,7 +50,7 @@ class Window:
         :return: None
         """
         text = manager.text_message.get("main_menu")
-        with suppress(IndexError, KeyError):
+        with suppress(IndexError, KeyError, ValueError):
             text = text.format(full_name=hbold(manager.user.full_name))
         await manager.send_message(text)
         await manager.state.set_state(None)
