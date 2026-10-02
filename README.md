@@ -151,7 +151,10 @@ A draft sees the last `max_context_messages` turns of the conversation. With
 not lost: once `fold_batch` of them are outside the window and not summarized
 yet, a separate request to the same model folds them into a running summary,
 which reaches the draft as a second system message. Fewer than that go to the
-model verbatim, between the summary and the window.
+model verbatim, between the summary and the window. One request folds at most
+the 40 oldest of them, and one draft makes at most 5 requests, saving the
+summary after each; a larger backlog is folded by the next drafts, and until
+then the draft gets the summary and the window only.
 
 | Option | Default | Description |
 |---|---|---|

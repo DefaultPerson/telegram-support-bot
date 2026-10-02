@@ -246,3 +246,84 @@ def test_summary_options():
     for bad in ({"fold_batch": 0}, {"max_chars": 10}, {"window": 4}):
         with pytest.raises(ValidationError):
             load_policy_from_dict({"ai": {"summary": bad}})
+
+
+class _NumberingProvider(_Provider):
+    """Answers the n-th summary request with "summary n"; request number ``fail_on`` fails."""
+
+    def __init__(self, fail_on=None) -> None:
+        super().__init__()
+        self.fail_on = fail_on
+
+    async def draft_reply(self, messages):
+        if "running summary" not in messages[0]["content"]:
+            self.drafts.append(messages)
+            return DRAFT
+        self.folds.append(messages)
+        if len(self.folds) == self.fail_on:
+            raise RuntimeError("provider is down")
+        return f"summary {len(self.folds)}"
+
+
+def folded(fold):
+    """The turn numbers one summary request carried."""
+    lines = fold[1]["content"].split("New messages:\n", 1)[1].splitlines()
+    return [int(line.rsplit(" ", 1)[1]) for line in lines]
+
+
+def test_a_long_backlog_is_folded_in_portions():
+    storage = _Storage(104)
+    provider = _NumberingProvider()
+
+    messages = draft(storage, provider, {"enabled": True})
+
+    assert [folded(f) for f in provider.folds] == [
+        list(range(1, 41)), list(range(41, 81)), list(range(81, 101)),
+    ]
+    # Each portion is folded into the summary the one before it produced.
+    assert provider.folds[1][1]["content"].startswith("Previous summary:\nsummary 1\n")
+    assert provider.folds[2][1]["content"].startswith("Previous summary:\nsummary 2\n")
+    assert storage.stored == [("summary 1", 40), ("summary 2", 80), ("summary 3", 100)]
+    assert messages[1:] == [summary_turn("summary 3"), *turns(101, 102, 103, 104)]
+
+
+def test_folds_per_draft_are_capped_and_the_rest_waits_for_the_next_draft():
+    storage = _Storage(5 * 40 + 30 + 4)
+    provider = _NumberingProvider()
+
+    messages = draft(storage, provider, {"enabled": True})
+
+    assert len(provider.folds) == 5
+    assert storage.stored[-1] == ("summary 5", 200)
+    # The 30 turns left over are more than fold_batch: kept out of this draft.
+    assert messages[1:] == [summary_turn("summary 5"), *turns(231, 232, 233, 234)]
+
+    provider = _NumberingProvider()
+    messages = draft(storage, provider, {"enabled": True})
+
+    (fold,) = provider.folds
+    assert fold[1]["content"].startswith("Previous summary:\nsummary 5\n")
+    assert folded(fold) == list(range(201, 231))
+    assert storage.stored[-1] == ("summary 1", 230)
+    assert messages[1:] == [summary_turn("summary 1"), *turns(231, 232, 233, 234)]
+
+
+def test_a_remainder_below_the_batch_goes_verbatim():
+    storage = _Storage(49)
+    provider = _NumberingProvider()
+
+    messages = draft(storage, provider, {"enabled": True})
+
+    assert [folded(f) for f in provider.folds] == [list(range(1, 41))]
+    assert messages[1:] == [summary_turn("summary 1"), *turns(*range(41, 50))]
+
+
+def test_a_failed_portion_keeps_the_portions_before_it():
+    storage = _Storage(104)
+    provider = _NumberingProvider(fail_on=2)
+
+    messages = draft(storage, provider, {"enabled": True})
+
+    assert len(provider.folds) == 2
+    assert storage.stored == [("summary 1", 40)]
+    assert messages[1:] == turns(101, 102, 103, 104)
