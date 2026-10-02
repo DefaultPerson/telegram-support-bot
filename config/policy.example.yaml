@@ -111,3 +111,17 @@ ai:
   # drafts than auto_min_drafts. The admin can still confirm.
   auto_threshold: 0.95
   auto_min_drafts: 20
+
+# Optional reminders in the user's topic when a reply is overdue, e.g.
+# "⏰ The user has been waiting for a reply for 3 h". A wait starts with the
+# user's first message after the last reply they got (a manager's delivered
+# message, a draft sent with its button, an automatic reply of a category);
+# policy auto-replies and /template do not count. Banned users, silent mode,
+# closed topics and users without a topic are never reminded about.
+reminders:
+  enabled: false
+  # One reminder per threshold and wait, in minutes since the wait started.
+  after_minutes: [180, 1440]
+  # Keys of ai.categories whose conversations get no reminders.
+  skip_categories: []
+  check_interval_minutes: 10

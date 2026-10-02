@@ -19,6 +19,7 @@ Telegram feedback bot for customer support. Messages from private chats are auto
 - **Throttling** — spam protection with configurable cooldown
 - **Policy engine** *(optional)* — declarative YAML rules to auto-reply, tag, close, suppress notifications, or skip topic creation
 - **LLM drafts** *(optional)* — classify the first message and suggest a reply to the manager via inline buttons (any OpenAI-compatible provider)
+- **Reply reminders** *(optional)* — remind the support group in the user's topic when a reply is overdue
 
 ## C4
 
@@ -142,3 +143,28 @@ With the mode on, a draft for a conversation of that category goes to the user
 right away, as if the manager had pressed Send, and the topic gets a copy marked
 as an automatic reply. Silent mode (`/silent`) keeps it a normal draft. Modes are
 stored in PostgreSQL and are all off until an admin turns one on.
+
+### Reply reminders
+
+The `reminders` section of the policy file (so it needs `POLICY_ENABLED=true`)
+posts a reminder into the user's topic when they wait too long for a reply, for
+example "⏰ The user has been waiting for a reply for 3 h". Off by default.
+
+| Option | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Turn the reminders on |
+| `after_minutes` | `[180, 1440]` | One reminder per threshold and wait, counted from the start of the wait; hours in the text are rounded |
+| `skip_categories` | `[]` | Keys of `ai.categories` whose conversations get no reminders |
+| `check_interval_minutes` | `10` | How often due reminders are checked |
+
+A wait starts with the user's first message that reaches the topic after the
+last reply they got; later messages do not move it. A reply is a manager's
+message delivered to the user (not a command, not in silent mode), a draft sent
+with its button, or an automatic reply of a category. Policy auto-replies and
+`/template` are not replies. Banned users, silent mode, closed topics
+(`/close` or `close_topic`) and users without a topic get no reminders.
+
+Waits are stored in PostgreSQL, so a restart only delays the reminders that came
+due meanwhile; a check after a long pause posts one reminder with the full wait.
+Only messages written after the upgrade start a wait, so turning the reminders
+on does not remind about old conversations.
