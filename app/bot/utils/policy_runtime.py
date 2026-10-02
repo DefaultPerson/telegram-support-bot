@@ -188,10 +188,13 @@ async def run_ai_draft(
     if data_urls:
         messages = _with_images(messages, message_text(message), data_urls)
 
+    # TIMEOUT_S bounds a single request; the overall limit has to leave room
+    # for the client's own retries, or a 429 kills the draft mid-backoff.
+    # This runs in a background task, so the long wait blocks nobody.
     try:
         draft = await asyncio.wait_for(
             provider.draft_reply(messages),
-            timeout=config.ai.TIMEOUT_S,
+            timeout=config.ai.total_timeout_s,
         )
     except Exception as ex:  # noqa: BLE001 - best-effort, never block the pipeline
         # Provider errors embed dashboard URLs with key hashes and can be huge.

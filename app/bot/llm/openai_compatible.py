@@ -23,10 +23,15 @@ class OpenAICompatibleProvider:
         model: str,
         timeout: int,
         max_tokens: int = 4096,
+        max_retries: int = 2,
     ) -> None:
         from openai import AsyncOpenAI
 
-        self._client = AsyncOpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
+        # ``timeout`` bounds one attempt; retries after a 429 wait out
+        # Retry-After on top of it, so the caller's overall limit must allow for that.
+        self._client = AsyncOpenAI(
+            base_url=base_url, api_key=api_key, timeout=timeout, max_retries=max_retries
+        )
         self._model = model
         self._max_tokens = max_tokens
 
