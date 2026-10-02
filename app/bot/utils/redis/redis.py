@@ -15,6 +15,8 @@ Tables (created idempotently by :func:`create_schema`):
 - ``ai_auto_modes`` — categories whose drafts go to the user without review.
 - ``reply_waits``   — users waiting for a reply since ``since``, with the number
   of reminders already posted (``reminders`` in the policy).
+- ``conversation_summaries`` — running summary of the transcript older than the
+  draft window (``ai.summary``) and the id of the last message folded into it.
 
 ``users.category`` holds the category picked for the user's first message.
 """
@@ -27,6 +29,13 @@ from .models import UserData
 
 if TYPE_CHECKING:
     from asyncpg import Pool, Record
+
+# Added to the transcript trim with ``keep_unsummarized``: only messages already
+# folded into the summary may go. A user without a summary keeps every message.
+_FOLDED_ONLY = (
+    "AND id <= COALESCE("
+    "(SELECT covered_id FROM conversation_summaries WHERE user_id = $1), 0)"
+)
 
 
 async def create_schema(pool: Pool) -> None:
@@ -150,6 +159,18 @@ async def create_schema(pool: Pool) -> None:
             )
             """
         )
+        # ai.summary: covered_id is the id of the last conversations row folded
+        # into the summary; rows above it are not summarized yet.
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversation_summaries (
+                user_id BIGINT PRIMARY KEY,
+                summary TEXT NOT NULL,
+                covered_id BIGINT NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
 
 
 class RedisStorage:
@@ -157,11 +178,15 @@ class RedisStorage:
 
     CONV_MAX = 40
 
-    def __init__(self, pool: Pool) -> None:
+    def __init__(self, pool: Pool, keep_unsummarized: bool = False) -> None:
         """
         :param pool: asyncpg connection pool.
+        :param keep_unsummarized: the CONV_MAX trim spares messages not yet
+            folded into the user's summary (``ai.summary``), so none is lost
+            before the summary has taken it in.
         """
         self.pool = pool
+        self.keep_unsummarized = keep_unsummarized
 
     @staticmethod
     def _row_to_user(row: Record) -> UserData:
@@ -297,7 +322,8 @@ class RedisStorage:
                 role,
                 text,
             )
-            # Trim to the last CONV_MAX messages for this user.
+            # Trim to the last CONV_MAX messages for this user; with
+            # keep_unsummarized, only the ones already in the summary.
             await conn.execute(
                 """
                 DELETE FROM conversations
@@ -305,7 +331,8 @@ class RedisStorage:
                     SELECT id FROM conversations WHERE user_id = $1
                     ORDER BY id DESC LIMIT $2
                 )
-                """,
+                """
+                + (_FOLDED_ONLY if self.keep_unsummarized else ""),
                 user_id,
                 self.CONV_MAX,
             )
@@ -320,6 +347,55 @@ class RedisStorage:
                 limit,
             )
         return [{"role": row["role"], "content": row["content"]} for row in reversed(rows)]
+
+    async def get_conversation_since(self, user_id: int, after_id: int, window: int) -> list[dict]:
+        """
+        Return the last ``window`` messages and every older one with an id above
+        ``after_id``, in chronological order and with their ids. One query, so a
+        message appended meanwhile cannot shift the window between two reads.
+        """
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, role, content FROM (
+                    SELECT id, role, content, row_number() OVER (ORDER BY id DESC) AS pos
+                    FROM conversations WHERE user_id = $1
+                ) AS numbered
+                WHERE id > $2 OR pos <= $3
+                ORDER BY id
+                """,
+                user_id,
+                after_id,
+                window,
+            )
+        return [{"id": row["id"], "role": row["role"], "content": row["content"]} for row in rows]
+
+    async def get_conversation_summary(self, user_id: int) -> tuple[str, int] | None:
+        """Return the user's summary and the id of the last message folded into it."""
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT summary, covered_id FROM conversation_summaries WHERE user_id = $1",
+                user_id,
+            )
+        return None if row is None else (row["summary"], row["covered_id"])
+
+    async def set_conversation_summary(self, user_id: int, summary: str, covered_id: int) -> None:
+        """
+        Store the summary of the messages up to ``covered_id``. One covering no
+        more than the stored summary is dropped, so two drafts folding at the
+        same time cannot move it back.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO conversation_summaries (user_id, summary, covered_id) "
+                "VALUES ($1, $2, $3) "
+                "ON CONFLICT (user_id) DO UPDATE SET summary = EXCLUDED.summary, "
+                "covered_id = EXCLUDED.covered_id, updated_at = now() "
+                "WHERE conversation_summaries.covered_id < EXCLUDED.covered_id",
+                user_id,
+                summary,
+                covered_id,
+            )
 
     async def get_user_category(self, user_id: int) -> str | None:
         """Return the category picked for the user's first message, if any."""
