@@ -17,6 +17,11 @@ def topic_link(group_id: int, message_thread_id: int) -> str:
     return f"https://t.me/c/{chat}/{message_thread_id}"
 
 
+def message_link(group_id: int, message_thread_id: int, message_id: int) -> str:
+    """Link to a message in a forum topic of the support group (t.me/c/<id>/<thread>/<message>)."""
+    return f"{topic_link(group_id, message_thread_id)}/{message_id}"
+
+
 async def notify_admins(bot: Bot, config: Config, text: str) -> None:
     """Message every admin in BOT_DEV_IDS; one unreachable admin does not stop the rest."""
     for admin_id in config.bot.DEV_IDS:

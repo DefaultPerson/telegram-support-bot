@@ -5,7 +5,8 @@ A wait starts with the user's first message after the last reply that reached
 them (a manager's message, a draft sent with its button, an automatic reply of
 a category) and ends with the next such reply. Policy auto-replies are not
 replies. Every threshold in ``reminders.after_minutes`` posts one reminder
-into the user's topic per wait. Off unless ``reminders.enabled`` is set.
+into the user's topic per wait; with ``reminders.notify_admins`` every admin
+also gets it in private with a link to it. Off unless ``reminders.enabled`` is set.
 """
 
 from __future__ import annotations
@@ -15,10 +16,12 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter, TelegramServerError
+from aiogram.utils.markdown import hlink
 from asyncpg import Pool
 
 from app.bot.policy import PolicyEngine
 from app.bot.policy.schema import RemindersSection
+from app.bot.utils.admins import message_link, notify_admins
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.texts import TextMessage
 from app.config import Config
@@ -55,22 +58,47 @@ def waited_hours(minutes: int) -> int:
     return max(1, (minutes + 30) // 60)
 
 
-async def _post_reminder(bot: Bot, config: Config, wait: dict) -> None:
-    """Post one reminder, waiting out Telegram's flood limit up to ``SEND_ATTEMPTS`` times."""
+def waited_text(txt: TextMessage, minutes: int) -> str:
+    """The wait for the reminder text: minutes under an hour, rounded hours from then on."""
+    if minutes < 60:
+        return txt.get("wait_minutes").format(minutes=max(1, minutes))
+    return txt.get("wait_hours").format(hours=waited_hours(minutes))
+
+
+async def _post_reminder(bot: Bot, config: Config, wait: dict) -> int:
+    """
+    Post one reminder and return its message id, waiting out Telegram's flood
+    limit up to ``SEND_ATTEMPTS`` times.
+    """
     txt = TextMessage(wait["language_code"] or "ru")
-    text = txt.get("reply_reminder").format(hours=waited_hours(wait["waited_minutes"]))
+    text = txt.get("reply_reminder").format(waited=waited_text(txt, wait["waited_minutes"]))
     for attempt in range(1, SEND_ATTEMPTS + 1):
         try:
-            await bot.send_message(
+            message = await bot.send_message(
                 chat_id=config.bot.GROUP_ID,
                 message_thread_id=wait["message_thread_id"],
                 text=text,
             )
-            return
+            return message.message_id
         except TelegramRetryAfter as ex:
             if attempt == SEND_ATTEMPTS:
                 raise
             await asyncio.sleep(ex.retry_after)
+
+
+async def _notify_admins(bot: Bot, config: Config, wait: dict, message_id: int) -> None:
+    """Message every admin a posted reminder with a link to it; failures are only logged."""
+    txt = TextMessage(wait["language_code"] or "ru")
+    link = message_link(config.bot.GROUP_ID, wait["message_thread_id"], message_id)
+    await notify_admins(
+        bot,
+        config,
+        txt.get("reply_reminder_admin").format(
+            name=hlink(wait["full_name"] or str(wait["user_id"]), link),
+            waited=waited_text(txt, wait["waited_minutes"]),
+            link=link,
+        ),
+    )
 
 
 async def check_reply_waits(
@@ -86,7 +114,7 @@ async def check_reply_waits(
         if not await redis.claim_reply_reminder(wait["user_id"], wait["since"], wait["level"]):
             continue
         try:
-            await _post_reminder(bot, config, wait)
+            message_id = await _post_reminder(bot, config, wait)
         except (TelegramRetryAfter, TelegramNetworkError, TelegramServerError) as ex:
             logger.warning("Reply reminder for user %s postponed: %s", wait["user_id"], ex)
             await redis.release_reply_reminder(
@@ -94,6 +122,9 @@ async def check_reply_waits(
             )
         except Exception as ex:  # noqa: BLE001
             logger.warning("Failed to post the reply reminder for user %s: %s", wait["user_id"], ex)
+        else:
+            if section.notify_admins:
+                await _notify_admins(bot, config, wait, message_id)
 
 
 async def drop_reply_waits(pool: Pool) -> None:

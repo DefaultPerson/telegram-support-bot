@@ -575,7 +575,7 @@ class RedisStorage:
                 """
                 SELECT * FROM (
                     SELECT w.user_id, w.since, w.reminded,
-                           u.message_thread_id, u.language_code,
+                           u.message_thread_id, u.language_code, u.full_name,
                            extract(epoch FROM now() - w.since)::bigint / 60 AS waited_minutes,
                            (SELECT count(*) FROM unnest($1::int[]) AS t(minutes)
                             WHERE w.since <= now() - make_interval(mins => t.minutes))::int AS level
