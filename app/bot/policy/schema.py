@@ -153,6 +153,8 @@ class RemindersSection(BaseModel):
     # Category keys (ai.categories) whose conversations get no reminders.
     skip_categories: list[str] = Field(default_factory=list)
     check_interval_minutes: int = Field(default=10, ge=1)
+    # Also message every admin in BOT_DEV_IDS with a link to the reminder.
+    notify_admins: bool = False
 
     @field_validator("after_minutes")
     @classmethod

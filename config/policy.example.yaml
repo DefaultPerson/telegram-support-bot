@@ -151,6 +151,8 @@ reminders:
   # Keys of ai.categories whose conversations get no reminders.
   skip_categories: []
   check_interval_minutes: 10
+  # Also message every admin in BOT_DEV_IDS with a link to the reminder.
+  notify_admins: false
 
 # Optional replacements for the bot's built-in texts (app/bot/utils/texts.py),
 # per key and language (en, ru). Telegram HTML, like the built-in texts; keep

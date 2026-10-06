@@ -329,7 +329,9 @@ def test_reply_waits():
         # A second message does not move the start of the wait.
         await storage.start_reply_wait(17)
         (due,) = await storage.get_due_reply_waits([180, 1440], [])
-        assert (due["user_id"], due["message_thread_id"], due["language_code"]) == (17, 117, "en")
+        assert (due["user_id"], due["message_thread_id"], due["language_code"], due["full_name"]) == (
+            17, 117, "en", "User 17"
+        )
         assert (due["reminded"], due["level"], due["waited_minutes"]) == (0, 1, 200)
 
         assert await storage.claim_reply_reminder(17, due["since"], 1) is True

@@ -219,14 +219,16 @@ stays as it was.
 
 The `reminders` section of the policy file (so it needs `POLICY_ENABLED=true`)
 posts a reminder into the user's topic when they wait too long for a reply, for
-example "⏰ The user has been waiting for a reply for 3 h". Off by default.
+example "⏰ The user has been waiting for a reply for 3 h", and can message every
+admin about it as well. Off by default.
 
 | Option | Default | Description |
 |---|---|---|
 | `enabled` | `false` | Turn the reminders on |
-| `after_minutes` | `[180, 1440]` | One reminder per threshold and wait, counted from the start of the wait; hours in the text are rounded |
+| `after_minutes` | `[180, 1440]` | One reminder per threshold and wait, counted from the start of the wait; the text shows minutes under an hour, rounded hours from then on |
 | `skip_categories` | `[]` | Keys of `ai.categories` whose conversations get no reminders |
 | `check_interval_minutes` | `10` | How often due reminders are checked |
+| `notify_admins` | `false` | Also message every admin in `BOT_DEV_IDS` with the user's name and a link to the reminder in the topic |
 
 A wait starts with the user's first message that reaches the topic after the
 last reply they got; later messages do not move it. A reply is a manager's
@@ -241,4 +243,6 @@ Only messages written after the upgrade start a wait, and a start with the
 reminders off (or without a policy) drops the waits on record, so turning the
 reminders on does not remind about old conversations. A reminder Telegram
 throttles or fails to deliver for a network or server error is retried by the
-next check; other send errors are logged.
+next check; other send errors are logged. Admins are messaged only after the
+reminder reached the topic; an admin who never started the bot is logged and
+skipped.

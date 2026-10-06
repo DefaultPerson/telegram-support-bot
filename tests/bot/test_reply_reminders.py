@@ -15,8 +15,9 @@ from app.bot.policy import load_policy_from_dict
 from app.bot.utils import reminders
 from app.bot.utils.policy_runtime import run_ai_draft
 from app.bot.utils.redis.models import UserData
+from app.bot.utils.texts import TextMessage
 
-GROUP = -100
+GROUP = -1001234567890
 CATEGORIES = [{"key": "payout", "title": "Payouts"}, {"key": "spam", "title": "Spam"}]
 
 
@@ -114,6 +115,7 @@ class _Bot:
         if self.errors:
             raise self.errors.pop(0)
         self.sent.append(kwargs)
+        return SimpleNamespace(message_id=500 + len(self.sent))
 
 
 def test_reminders_are_off_by_default():
@@ -121,6 +123,7 @@ def test_reminders_are_off_by_default():
     assert section.enabled is False
     assert section.after_minutes == [180, 1440]
     assert section.check_interval_minutes == 10
+    assert section.notify_admins is False
     assert reminders.reminders_enabled(None) is False
     assert reminders.reminders_enabled(load_policy_from_dict({})) is False
 
@@ -143,6 +146,13 @@ def test_bad_reminders_section_is_rejected(section):
 @pytest.mark.parametrize("minutes,hours", [(1, 1), (89, 1), (90, 2), (180, 3), (1440, 24), (1475, 25)])
 def test_waited_hours_are_rounded(minutes, hours):
     assert reminders.waited_hours(minutes) == hours
+
+
+@pytest.mark.parametrize("minutes,language,text", [
+    (0, "en", "1 min"), (30, "en", "30 min"), (59, "ru", "59 мин"), (60, "en", "1 h"), (185, "ru", "3 ч"),
+])
+def test_waits_under_an_hour_are_shown_in_minutes(minutes, language, text):
+    assert reminders.waited_text(TextMessage(language), minutes) == text
 
 
 class _Message:
@@ -335,13 +345,13 @@ def test_automatic_reply_ends_the_wait(flag):
 def wait(user_id, thread_id, minutes, level, language="en"):
     return {
         "user_id": user_id, "since": datetime(2026, 1, 1, tzinfo=timezone.utc), "reminded": level - 1,
-        "message_thread_id": thread_id, "language_code": language,
+        "message_thread_id": thread_id, "language_code": language, "full_name": f"User {user_id}",
         "waited_minutes": minutes, "level": level,
     }
 
 
-def check(storage, bot, policy):
-    config = SimpleNamespace(bot=SimpleNamespace(GROUP_ID=GROUP))
+def check(storage, bot, policy, admins=()):
+    config = SimpleNamespace(bot=SimpleNamespace(GROUP_ID=GROUP, DEV_IDS=list(admins)))
     asyncio.run(reminders.check_reply_waits(bot, config, storage, policy.reminders))
 
 
@@ -358,6 +368,45 @@ def test_due_waits_are_reminded_in_their_topic():
          "text": "⏰ The user has been waiting for a reply for 3 h"},
         {"chat_id": GROUP, "message_thread_id": 8, "text": "⏰ Клиент ждёт ответа 25 ч"},
     ]
+
+
+def test_admins_get_the_reminder_with_a_link_to_it():
+    storage = _Storage(due=[wait(42, 7, 31, 1, language="ru")])
+    bot = _Bot()
+
+    check(storage, bot, engine(after_minutes=[30, 1440], notify_admins=True), admins=[1, 2])
+
+    link = "https://t.me/c/1234567890/7/501"
+    assert bot.sent == [
+        {"chat_id": GROUP, "message_thread_id": 7, "text": "⏰ Клиент ждёт ответа 31 мин"},
+        {"chat_id": 1, "text": f'⏰ <a href="{link}">User 42</a> ждёт ответа 31 мин\n{link}'},
+        {"chat_id": 2, "text": f'⏰ <a href="{link}">User 42</a> ждёт ответа 31 мин\n{link}'},
+    ]
+
+
+def test_admins_get_nothing_unless_the_policy_asks():
+    bot = _Bot()
+    check(_Storage(due=[wait(42, 7, 185, 1)]), bot, engine(), admins=[1, 2])
+    assert [m["chat_id"] for m in bot.sent] == [GROUP]
+
+
+def test_unreachable_admin_does_not_stop_the_rest(caplog):
+    storage = _Storage(due=[wait(42, 7, 185, 1)])
+    bot = _Bot()
+    sent = bot.send_message
+
+    async def send_message(**kwargs):
+        if kwargs["chat_id"] == 1:
+            raise TelegramBadRequest(method=None, message="Bad Request: chat not found")
+        return await sent(**kwargs)
+
+    bot.send_message = send_message
+    with caplog.at_level(logging.WARNING):
+        check(storage, bot, engine(notify_admins=True), admins=[1, 2])
+
+    assert [m["chat_id"] for m in bot.sent] == [GROUP, 2]
+    assert "admin 1" in caplog.text
+    assert storage.releases == []
 
 
 def test_claimed_reminder_is_not_repeated():
@@ -414,10 +463,11 @@ def test_temporary_failure_leaves_the_reminder_to_the_next_check(sleeps, errors)
     storage = _Storage(due=[wait(42, 7, 185, 2), wait(43, 8, 185, 1)])
     bot = _Bot(errors=errors)
 
-    check(storage, bot, engine())
+    check(storage, bot, engine(notify_admins=True), admins=[1])
 
     assert storage.releases == [(42, 2, 1)]
-    assert [m["message_thread_id"] for m in bot.sent] == [8]
+    # Admins hear only of the reminder that went out; the other waits for the next check.
+    assert [(m["chat_id"], m.get("message_thread_id")) for m in bot.sent] == [(GROUP, 8), (1, None)]
 
 
 @pytest.mark.parametrize("policy,running", [

@@ -45,7 +45,7 @@ def test_placeholders_of_formatted_texts_are_checked(text, error):
 
 
 def test_override_may_use_fewer_placeholders():
-    texts = {"reply_reminder": {"en": "Still there?", "ru": "Прошло {hours} ч"}}
+    texts = {"reply_reminder": {"en": "Still there?", "ru": "Прошло {waited}"}}
     assert load_policy_from_dict({"texts": texts}).texts == texts
 
 
