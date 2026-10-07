@@ -256,6 +256,7 @@ def handler(monkeypatch):
         async def forward(**kwargs):
             if fail:
                 raise RuntimeError("group is unreachable")
+            return SimpleNamespace(message_id=900)
 
         message = SimpleNamespace(bot=_Bot(), text=text, caption=None, reply=reply, forward=forward)
         asyncio.run(private_message.handle_incoming_message(

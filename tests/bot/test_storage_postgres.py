@@ -373,6 +373,37 @@ def test_conversation_since():
     run(scenario)
 
 
+def test_urgent_notice_goes_out_once_per_wait():
+    async def scenario(pool, storage):
+        # Without a wait (reminders off) every urgent message is reported.
+        assert await storage.claim_urgent_notice(40) is True
+        assert await storage.claim_urgent_notice(40) is True
+
+        await storage.start_reply_wait(40)
+        assert await storage.claim_urgent_notice(40) is True
+        assert await storage.claim_urgent_notice(40) is False
+        # A second message does not reset it; a reply does.
+        await storage.start_reply_wait(40)
+        assert await storage.claim_urgent_notice(40) is False
+        await storage.end_reply_wait(40)
+        await storage.start_reply_wait(40)
+        assert await storage.claim_urgent_notice(40) is True
+
+    run(scenario)
+
+
+def test_upgrade_adds_the_urgent_flag_to_waits():
+    async def scenario(pool, storage):
+        await storage.start_reply_wait(41)
+        async with pool.acquire() as conn:
+            await conn.execute("ALTER TABLE reply_waits DROP COLUMN urgent_notified")
+        await create_schema(pool)
+        assert await storage.claim_urgent_notice(41) is True
+        assert await storage.claim_urgent_notice(41) is False
+
+    run(scenario)
+
+
 def test_released_reminder_is_due_again():
     async def scenario(pool, storage):
         await storage.update_user(18, user(18, thread_id=118))

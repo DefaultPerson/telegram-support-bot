@@ -136,14 +136,21 @@ ai:
     enabled: false
     fold_batch: 8
     max_chars: 1200
+  # Every user message also goes to the model with these criteria; an urgent
+  # one reaches every admin in BOT_DEV_IDS in private at once, with a link to
+  # it in the topic (once per wait for a reply while reminders are on).
+  urgent:
+    enabled: false
+    criteria: ""
 
 # Optional reminders in the user's topic when a reply is overdue, e.g.
 # "⏰ The user has been waiting for a reply for 3 h". A wait starts with the
 # user's first message after the last reply they got (a manager's delivered
 # message, a draft sent with its button, an automatic reply of a category);
-# policy auto-replies and /template do not count. Banned users, silent mode,
-# closed topics and users without a topic are never reminded about. Replies
-# are not tracked while this is off, so a start with it off drops the waits.
+# policy auto-replies, canned replies and /template do not count. Only banned
+# users and users without a topic are never reminded about; closed topics and
+# silent mode are. Replies are not tracked while this is off, so a start with
+# it off drops the waits.
 reminders:
   enabled: false
   # One reminder per threshold and wait, in minutes since the wait started.

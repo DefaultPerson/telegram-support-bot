@@ -20,6 +20,7 @@ Telegram feedback bot for customer support. Messages from private chats are auto
 - **Policy engine** *(optional)* — declarative YAML rules to auto-reply, tag, close, suppress notifications, or skip topic creation
 - **LLM drafts** *(optional)* — classify the first message and suggest a reply to the manager via inline buttons (any OpenAI-compatible provider)
 - **Reply reminders** *(optional)* — remind the support group in the user's topic when a reply is overdue
+- **Urgent messages** *(optional)* — the LLM checks every user message and urgent ones reach every admin in private at once
 
 ## C4
 
@@ -186,6 +187,25 @@ ai:
     - key: payout_schedule
       en: "Payouts go out every Friday."
       ru: "Выплаты приходят каждую пятницу."
+```
+
+### Urgent messages
+
+With `ai.urgent.enabled`, every user message that reaches the topic also goes
+to the model with `ai.urgent.criteria` and the question whether it is urgent,
+in a request of its own next to the draft. An urgent one reaches every admin in
+`BOT_DEV_IDS` in private at once: the user's name, the first 300 characters of
+the message and a link to it in the topic. With the reply reminders on, the
+admins hear of it once per wait for a reply; with them off, of every urgent
+message. A failed request counts as not urgent and is logged.
+
+```yaml
+ai:
+  urgent:
+    enabled: true
+    criteria: |
+      - the user paid and got nothing, or disputes a payment
+      - the user asks to remove a post right away
 ```
 
 ### Conversation summary

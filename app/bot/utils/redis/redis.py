@@ -181,6 +181,10 @@ async def create_schema(pool: Pool) -> None:
             )
             """
         )
+        # ai.urgent: the admins heard of an urgent message in this wait.
+        await conn.execute(
+            "ALTER TABLE reply_waits ADD COLUMN IF NOT EXISTS urgent_notified BOOLEAN NOT NULL DEFAULT FALSE"
+        )
         # ai.summary: covered_id is the id of the last conversations row folded
         # into the summary; rows above it are not summarized yet.
         await conn.execute(
@@ -619,6 +623,25 @@ class RedisStorage:
                 since,
                 level,
                 reminded,
+            )
+
+    async def claim_urgent_notice(self, user_id: int) -> bool:
+        """
+        Record that the admins heard of an urgent message in the user's wait.
+        False when they already did; True when there is no wait (reminders off).
+        """
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval(
+                """
+                WITH claimed AS (
+                    UPDATE reply_waits SET urgent_notified = TRUE
+                    WHERE user_id = $1 AND NOT urgent_notified
+                    RETURNING user_id
+                )
+                SELECT EXISTS (SELECT 1 FROM claimed)
+                    OR NOT EXISTS (SELECT 1 FROM reply_waits WHERE user_id = $1)
+                """,
+                user_id,
             )
 
     async def clear_reply_waits(self) -> None:

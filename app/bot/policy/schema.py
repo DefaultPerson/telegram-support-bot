@@ -105,6 +105,21 @@ class AISummary(BaseModel):
     max_chars: int = Field(default=1200, ge=100)
 
 
+class AIUrgent(BaseModel):
+    """Check every user message for urgency and message the admins about urgent ones."""
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    # What counts as urgent, in words for the model.
+    criteria: str = ""
+
+    @model_validator(mode="after")
+    def _has_criteria(self) -> "AIUrgent":
+        if self.enabled and not self.criteria.strip():
+            raise ValueError("urgent: criteria are required when enabled")
+        return self
+
+
 class AISection(BaseModel):
     """LLM-related options. The engine never executes actions from here."""
     model_config = ConfigDict(extra="forbid")
@@ -124,6 +139,8 @@ class AISection(BaseModel):
     summary: AISummary = Field(default_factory=AISummary)
     # Empty: every draft waits for the manager (or the category's auto mode).
     canned_replies: list[AICannedReply] = Field(default_factory=list)
+    # Off: no message is checked for urgency.
+    urgent: AIUrgent = Field(default_factory=AIUrgent)
 
     @field_validator("canned_replies")
     @classmethod

@@ -175,6 +175,7 @@ class TextMessage(Text):
                 "reply_reminder_admin": "⏰ {name} has been waiting for a reply for {waited}\n{link}",
                 "wait_minutes": "{minutes} min",
                 "wait_hours": "{hours} h",
+                "urgent_admin_notice": "🚨 Urgent message from {name}:\n{text}\n{link}",
             },
             "ru": {
                 "select_language": f"👋 <b>Привет</b>, {hbold('{full_name}')}!\n\nВыберите язык:",
@@ -283,5 +284,6 @@ class TextMessage(Text):
                 "reply_reminder_admin": "⏰ {name} ждёт ответа {waited}\n{link}",
                 "wait_minutes": "{minutes} мин",
                 "wait_hours": "{hours} ч",
+                "urgent_admin_notice": "🚨 Срочное сообщение от {name}:\n{text}\n{link}",
             },
         }
