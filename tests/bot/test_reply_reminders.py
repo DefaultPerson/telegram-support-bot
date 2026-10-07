@@ -165,7 +165,7 @@ class _Message:
         return None
 
     async def forward(self, **kwargs):
-        return None
+        return SimpleNamespace(message_id=900)
 
     async def reply(self, text):
         async def delete():

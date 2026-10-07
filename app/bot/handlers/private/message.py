@@ -20,6 +20,7 @@ from app.bot.utils.policy_runtime import (
     build_message_context,
     message_text,
     run_ai_layer,
+    run_urgent_check,
 )
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import UserData
@@ -97,7 +98,8 @@ async def handle_incoming_message(
 
     async def copy_message_to_topic():
         """
-        Copies the message or album to the forum topic.
+        Copies the message or album to the forum topic and returns the id of
+        its (first) copy there.
         If no album is provided, the message is copied. Otherwise, the album is copied.
         """
         message_thread_id = await get_or_create_forum_topic(
@@ -108,19 +110,20 @@ async def handle_incoming_message(
         )
 
         if not album:
-            await message.forward(
+            forwarded = await message.forward(
                 chat_id=manager.config.bot.GROUP_ID,
                 message_thread_id=message_thread_id,
             )
-        else:
-            await album.copy_to(
-                chat_id=manager.config.bot.GROUP_ID,
-                message_thread_id=message_thread_id,
-            )
+            return forwarded.message_id
+        copies = await album.copy_to(
+            chat_id=manager.config.bot.GROUP_ID,
+            message_thread_id=message_thread_id,
+        )
+        return copies[0].message_id
 
     try:
         try:
-            await copy_message_to_topic()
+            topic_message_id = await copy_message_to_topic()
         except TelegramBadRequest as ex:
             if "message thread not found" in ex.message:
                 user_data.message_thread_id = await create_forum_topic(
@@ -129,7 +132,7 @@ async def handle_incoming_message(
                     user_data.full_name,
                 )
                 await redis.update_user(user_data.id, user_data)
-                await copy_message_to_topic()
+                topic_message_id = await copy_message_to_topic()
             else:
                 raise
     except Exception:
@@ -157,6 +160,13 @@ async def handle_incoming_message(
                 run_ai_layer(
                     llm_provider, manager.config, message, redis, user_data, ai, album,
                     classify=classify, draft=draft, reminders=reminders,
+                )
+            )
+        # Urgent messages reach the admins right away, whatever the draft does.
+        if ai.urgent.enabled:
+            asyncio.create_task(
+                run_urgent_check(
+                    llm_provider, manager.config, message, redis, user_data, ai, topic_message_id,
                 )
             )
 

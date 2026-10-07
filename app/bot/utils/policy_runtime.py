@@ -18,7 +18,7 @@ from app.bot.policy import Decision, EvalContext
 from app.bot.policy.context import EVENT_USER_MESSAGE
 from app.bot.policy.schema import AICategory, AISection, AISummary
 from app.bot.types.album import Album
-from app.bot.utils.admins import notify_admins, topic_link
+from app.bot.utils.admins import message_link, notify_admins, topic_link
 from app.bot.utils.redact import redact
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.redis.models import UserData
@@ -39,6 +39,14 @@ _CLASSIFY_PROMPT = (
     "categories below. Answer with the category key only, nothing else.\n\n"
     "Categories (key: description):\n{categories}"
 )
+
+_URGENT_PROMPT = (
+    "Decide whether the user's message to a support chat is urgent. Urgent "
+    "means:\n{criteria}\n\nAnything else is not urgent. Answer with yes or no only."
+)
+
+# Characters of an urgent message quoted to the admins.
+_URGENT_EXCERPT = 300
 
 _SUMMARY_PROMPT = (
     "You keep a running summary of a customer support conversation. Merge the "
@@ -281,6 +289,73 @@ async def classify_message(
         logger.warning("AI classification failed: %s: %s", type(ex).__name__, redact(str(ex)))
         return None
     return parse_category(answer, ai.categories)
+
+
+def parse_urgent(answer: str | None) -> bool:
+    """True when the model said yes (or да), whatever the case and punctuation."""
+    return (answer or "").strip().lower().startswith(("yes", "да"))
+
+
+async def check_urgent(provider: LLMProvider, config: Config, ai: AISection, text: str) -> bool:
+    """Ask the model whether the user's message is urgent. Best-effort: False on failure."""
+    if not text.strip():
+        return False
+    messages = [
+        {"role": "system", "content": _URGENT_PROMPT.format(criteria=ai.urgent.criteria.strip())},
+        {"role": "user", "content": text},
+    ]
+    try:
+        answer = await asyncio.wait_for(
+            provider.draft_reply(messages),
+            timeout=config.ai.total_timeout_s,
+        )
+    except Exception as ex:  # noqa: BLE001 - best-effort, never block the pipeline
+        logger.warning("AI urgency check failed: %s: %s", type(ex).__name__, redact(str(ex)))
+        return False
+    return parse_urgent(answer)
+
+
+async def run_urgent_check(
+    provider: LLMProvider,
+    config: Config,
+    message: Message,
+    redis: RedisStorage,
+    user_data: UserData,
+    ai: AISection,
+    topic_message_id: int | None,
+) -> None:
+    """
+    Message every admin at once when the user's message is urgent: once per
+    wait for a reply, or every time with reminders off. The link points to the
+    message in the topic.
+    """
+    text = message_text(message)
+    if not await check_urgent(provider, config, ai, text):
+        return
+    logger.info("Urgent message from user %s", user_data.id)
+    try:
+        first = await redis.claim_urgent_notice(user_data.id)
+    except Exception as ex:  # noqa: BLE001 - better a repeated notice than none
+        logger.warning("Failed to claim the urgent notice of user %s: %s", user_data.id, ex)
+        first = True
+    if not first:
+        return
+
+    if topic_message_id is None:
+        link = topic_link(config.bot.GROUP_ID, user_data.message_thread_id)
+    else:
+        link = message_link(config.bot.GROUP_ID, user_data.message_thread_id, topic_message_id)
+    excerpt = text if len(text) <= _URGENT_EXCERPT else text[:_URGENT_EXCERPT] + "…"
+    txt = TextMessage(user_data.language_code or "ru")
+    await notify_admins(
+        message.bot,
+        config,
+        txt.get("urgent_admin_notice").format(
+            name=hlink(user_data.full_name or str(user_data.id), link),
+            text=html.escape(excerpt),
+            link=link,
+        ),
+    )
 
 
 async def apply_category(
