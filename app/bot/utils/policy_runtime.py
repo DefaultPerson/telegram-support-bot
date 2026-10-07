@@ -568,11 +568,12 @@ async def run_ai_draft(
 
     # A canned reply is pre-approved, whatever the category. If it fails to go
     # out, it stays a draft for the manager. Silent mode means nothing reaches
-    # the user.
+    # the user. It is not an answer either: most promise one from an admin, so
+    # the wait for a reply goes on.
     canned = None if user_data.message_silent_mode else ai.canned_reply(draft)
     if canned is not None:
         header = txt.get("ai_canned_sent_header").format(key=canned.key)
-        if await _auto_send(config, message, redis, user_data, ai, category, draft, header, reminders):
+        if await _auto_send(config, message, redis, user_data, ai, category, draft, header):
             return
 
     # needs_human is checked again here: the config may have changed after the

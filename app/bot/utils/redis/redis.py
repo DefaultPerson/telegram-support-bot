@@ -567,8 +567,9 @@ class RedisStorage:
     ) -> list[dict]:
         """
         Waits that passed a threshold they were not reminded of yet. ``level``
-        is the number of thresholds passed so far. Banned and silenced users,
-        closed or missing topics and skipped categories are left out.
+        is the number of thresholds passed so far. Banned users, users without
+        a topic and skipped categories are left out; closed topics and silent
+        mode are not, since the user still waits.
         """
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
@@ -582,8 +583,6 @@ class RedisStorage:
                     FROM reply_waits w
                     JOIN users u ON u.id = w.user_id
                     WHERE NOT u.is_banned
-                      AND NOT u.message_silent_mode
-                      AND u.status <> 'closed'
                       AND u.message_thread_id IS NOT NULL
                       AND (u.category IS NULL OR u.category <> ALL($2::text[]))
                 ) due

@@ -6,7 +6,8 @@ them (a manager's message, a draft sent with its button, an automatic reply of
 a category) and ends with the next such reply. Policy auto-replies are not
 replies. Every threshold in ``reminders.after_minutes`` posts one reminder
 into the user's topic per wait; with ``reminders.notify_admins`` every admin
-also gets it in private with a link to it. Off unless ``reminders.enabled`` is set.
+also gets it in private with a link to it. Only banned users are never
+reminded about. Off unless ``reminders.enabled`` is set.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from asyncpg import Pool
 
 from app.bot.policy import PolicyEngine
 from app.bot.policy.schema import RemindersSection
-from app.bot.utils.admins import message_link, notify_admins
+from app.bot.utils.admins import message_link, notify_admins, topic_link
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.texts import TextMessage
 from app.config import Config
@@ -86,10 +87,16 @@ async def _post_reminder(bot: Bot, config: Config, wait: dict) -> int:
             await asyncio.sleep(ex.retry_after)
 
 
-async def _notify_admins(bot: Bot, config: Config, wait: dict, message_id: int) -> None:
-    """Message every admin a posted reminder with a link to it; failures are only logged."""
+async def _notify_admins(bot: Bot, config: Config, wait: dict, message_id: int | None) -> None:
+    """
+    Message every admin the reminder with a link to it, or to the topic when it
+    was not posted there. Failures are only logged.
+    """
     txt = TextMessage(wait["language_code"] or "ru")
-    link = message_link(config.bot.GROUP_ID, wait["message_thread_id"], message_id)
+    if message_id is None:
+        link = topic_link(config.bot.GROUP_ID, wait["message_thread_id"])
+    else:
+        link = message_link(config.bot.GROUP_ID, wait["message_thread_id"], message_id)
     await notify_admins(
         bot,
         config,
@@ -105,8 +112,9 @@ async def check_reply_waits(
     bot: Bot, config: Config, redis: RedisStorage, section: RemindersSection
 ) -> None:
     """
-    Post the reminders that are due. A failed send is logged; a temporary
-    failure (flood limit, network, Telegram server) is retried by the next check.
+    Post the reminders that are due. A temporary failure (flood limit, network,
+    Telegram server) is retried by the next check; another failed send is
+    logged, and the admins still hear of the wait.
     """
     waits = await redis.get_due_reply_waits(section.after_minutes, section.skip_categories)
     for wait in waits:
@@ -120,11 +128,12 @@ async def check_reply_waits(
             await redis.release_reply_reminder(
                 wait["user_id"], wait["since"], wait["level"], wait["reminded"]
             )
+            continue
         except Exception as ex:  # noqa: BLE001
             logger.warning("Failed to post the reply reminder for user %s: %s", wait["user_id"], ex)
-        else:
-            if section.notify_admins:
-                await _notify_admins(bot, config, wait, message_id)
+            message_id = None
+        if section.notify_admins:
+            await _notify_admins(bot, config, wait, message_id)
 
 
 async def drop_reply_waits(pool: Pool) -> None:

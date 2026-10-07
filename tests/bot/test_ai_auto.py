@@ -219,7 +219,8 @@ def test_canned_reply_is_sent_right_away(answer):
     assert storage.logged == [(None, "auto_sent")]
     assert storage.conversation == [("assistant", answer)]
     assert storage.draft is None
-    assert storage.waits_ended == [42]
+    # Not an answer: the admins are still reminded if nobody replies.
+    assert storage.waits_ended == []
 
 
 def test_canned_reply_ignores_the_category():

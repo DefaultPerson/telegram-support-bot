@@ -426,8 +426,8 @@ def test_due_reply_waits_skip_what_needs_no_reminder():
             21: make(21),                                # due: first threshold
             22: make(22),                                # too early
             23: make(23, is_banned=True),
-            24: make(24, message_silent_mode=True),
-            25: make(25, status="closed"),
+            24: make(24, message_silent_mode=True),     # due: nothing reached the user
+            25: make(25, status="closed"),              # due: the user still waits
             26: make(26, thread=False),
             27: make(27),                                # skipped category
             28: make(28, status="escalated"),            # due, other category
@@ -450,10 +450,10 @@ def test_due_reply_waits_skip_what_needs_no_reminder():
         due = await storage.get_due_reply_waits([180, 1440], ["spam"])
 
         assert {row["user_id"]: (row["reminded"], row["level"]) for row in due} == {
-            21: (0, 1), 28: (0, 1), 29: (1, 2), 31: (0, 2),
+            21: (0, 1), 24: (0, 1), 25: (0, 1), 28: (0, 1), 29: (1, 2), 31: (0, 2),
         }
         assert {row["user_id"] for row in await storage.get_due_reply_waits([180, 1440], [])} == {
-            21, 27, 28, 29, 31,
+            21, 24, 25, 27, 28, 29, 31,
         }
         assert await storage.get_due_reply_waits([], []) == []
 
