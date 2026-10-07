@@ -409,6 +409,21 @@ def test_unreachable_admin_does_not_stop_the_rest(caplog):
     assert storage.releases == []
 
 
+def test_admins_hear_of_a_reminder_the_topic_refused(caplog):
+    storage = _Storage(due=[wait(42, 7, 185, 1)])
+    bot = _Bot(fail_for=[7])
+
+    with caplog.at_level(logging.WARNING):
+        check(storage, bot, engine(notify_admins=True), admins=[1])
+
+    link = "https://t.me/c/1234567890/7"
+    assert bot.sent == [
+        {"chat_id": 1, "text": f'⏰ <a href="{link}">User 42</a> has been waiting for a reply for 3 h\n{link}'},
+    ]
+    assert "user 42" in caplog.text
+    assert storage.releases == []
+
+
 def test_claimed_reminder_is_not_repeated():
     storage = _Storage(due=[wait(42, 7, 185, 1)], claim=False)
     bot = _Bot()

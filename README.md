@@ -177,7 +177,8 @@ whatever the category (`needs_human` and the category's mode included), and the
 topic gets a copy marked as an automatic reply with the reply's key; the log
 records it as `auto_sent`. Spacing, case, `ё`/`е` and a final `.` or `!` do not
 count when comparing. Silent mode or a failed send keeps it a normal draft with
-**Send / Skip**, and any other text is handled as before.
+**Send / Skip**, and any other text is handled as before. A canned reply is not
+an answer for the reply reminders: the wait goes on until a manager replies.
 
 ```yaml
 ai:
@@ -233,9 +234,10 @@ admin about it as well. Off by default.
 A wait starts with the user's first message that reaches the topic after the
 last reply they got; later messages do not move it. A reply is a manager's
 message delivered to the user (not a command, not in silent mode), a draft sent
-with its button, or an automatic reply of a category. Policy auto-replies and
-`/template` are not replies. Banned users, silent mode, closed topics
-(`/close` or `close_topic`) and users without a topic get no reminders.
+with its button, or an automatic reply of a category. Policy auto-replies,
+canned replies and `/template` are not replies. Only banned users (and users
+without a topic) get no reminders; a closed topic (`/close` or `close_topic`)
+or silent mode does not stop them, since the user still waits.
 
 Waits are stored in PostgreSQL, so a restart only delays the reminders that came
 due meanwhile; a check after a long pause posts one reminder with the full wait.
@@ -243,6 +245,6 @@ Only messages written after the upgrade start a wait, and a start with the
 reminders off (or without a policy) drops the waits on record, so turning the
 reminders on does not remind about old conversations. A reminder Telegram
 throttles or fails to deliver for a network or server error is retried by the
-next check; other send errors are logged. Admins are messaged only after the
-reminder reached the topic; an admin who never started the bot is logged and
-skipped.
+next check, admins included; other send errors are logged, and the admins
+still get the reminder with a link to the topic. An admin who never started the
+bot is logged and skipped.
