@@ -131,7 +131,9 @@ def test_draft_is_not_logged_by_default():
 def manager(admin_id=ADMIN):
     return SimpleNamespace(
         config=SimpleNamespace(bot=SimpleNamespace(GROUP_ID=-100, DEV_IDS=[admin_id])),
-        text_message=SimpleNamespace(get=lambda key: key + " {category}{days}{rate}"),
+        text_message=SimpleNamespace(
+            get=lambda key: key + (" {name}" if key == "ai_draft_sent_header" else " {category}{days}{rate}"),
+        ),
     )
 
 
@@ -141,6 +143,13 @@ class _CallbackMessage:
         self.text = text
         self.buttons_removed = False
         self.deleted = False
+        self.edit_error = None
+
+    async def edit_text(self, text, reply_markup=None, parse_mode=None):
+        if self.edit_error is not None:
+            raise self.edit_error
+        self.text = text
+        self.buttons_removed = reply_markup is None
 
     async def edit_reply_markup(self, reply_markup=None):
         self.buttons_removed = True
@@ -155,6 +164,7 @@ class _Call:
     ) -> None:
         self.data = data
         self.bot = _Bot(error)
+        self.from_user = SimpleNamespace(full_name="Manager")
         self.message = _CallbackMessage(message_id, text)
         self.answers: list = []
         self.alerts: list = []
@@ -240,6 +250,25 @@ def test_unrecorded_draft_message_is_recorded_on_press():
 
     assert [m["text"] for m in call.bot.sent] == ["Newest draft"]
     assert storage.resolved == [(42, "sent")]
+
+
+def test_sent_draft_message_says_who_sent_it():
+    storage = _Storage(draft="Newest draft", message_id=101)
+    call = press(_Call("ai:send:42", text="AI draft\nCategory: X\n\nNewest draft"), storage)
+
+    assert call.message.text == "ai_draft_sent_header Manager\nCategory: X\n\nNewest draft"
+    assert call.message.buttons_removed
+
+
+def test_sent_draft_keeps_its_text_when_it_cannot_be_edited(caplog):
+    storage = _Storage(draft="Newest draft", message_id=101)
+    call = _Call("ai:send:42", text="AI draft\n\nNewest draft")
+    call.message.edit_error = TelegramBadRequest(method=None, message="Bad Request: message is too long")
+    press(call, storage)
+
+    assert call.message.text == "AI draft\n\nNewest draft"
+    assert call.message.buttons_removed
+    assert "message is too long" in caplog.text
 
 
 def test_unrecorded_draft_is_kept_when_another_message_is_pressed():

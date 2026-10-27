@@ -25,6 +25,22 @@ def _shows_draft(message, text: str) -> bool:
     return (message.text or "").rstrip().endswith("\n\n" + text.rstrip())
 
 
+async def _mark_sent(message, header: str) -> None:
+    """
+    Put ``header`` in place of the draft header's first line and drop the
+    buttons, or only drop the buttons if the text cannot be edited.
+    """
+    _, newline, rest = (getattr(message, "text", None) or "").partition("\n")
+    if newline:
+        try:
+            await message.edit_text(f"{header}\n{rest}", reply_markup=None, parse_mode=None)
+            return
+        except TelegramBadRequest as ex:
+            logger.warning("Failed to mark the draft message as sent: %s", ex)
+    with suppress(TelegramBadRequest):
+        await message.edit_reply_markup(reply_markup=None)
+
+
 @router.callback_query(F.data.startswith("ai:"))
 async def ai_draft_callback(
         call: CallbackQuery,
@@ -83,6 +99,13 @@ async def ai_draft_callback(
             if reminders_enabled(policy_engine):
                 await end_reply_wait(redis, user_id)
             await call.answer(manager.text_message.get("draft_sent"))
+            await redis.clear_ai_draft(user_id)
+            # The toast alone is easy to miss: the message itself says it went out.
+            header = manager.text_message.get("ai_draft_sent_header").format(
+                name=call.from_user.full_name,
+            )
+            await _mark_sent(call.message, header)
+            return
         else:
             await call.answer(manager.text_message.get("draft_expired"))
         await redis.clear_ai_draft(user_id)

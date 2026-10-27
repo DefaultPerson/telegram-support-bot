@@ -3,8 +3,8 @@ Reminders in the support group when a user waits too long for a reply.
 
 A wait starts with the user's first message after the last reply that reached
 them (a manager's message, a draft sent with its button, an automatic reply of
-a category) and ends with the next such reply. Policy auto-replies are not
-replies. Every threshold in ``reminders.after_minutes`` posts one reminder
+a category) and ends with the next such reply, or when the AI draft finds the
+user closed the conversation. Policy auto-replies are not replies. Every threshold in ``reminders.after_minutes`` posts one reminder
 into the user's topic per wait; with ``reminders.notify_admins`` every admin
 also gets it in private with a link to it. Only banned users are never
 reminded about. Off unless ``reminders.enabled`` is set.

@@ -65,6 +65,15 @@ _CANNED_PROMPT = (
     "{replies}"
 )
 
+# The draft answer that means the user expects nothing more from support.
+_NO_REPLY = "NO_REPLY"
+
+_NO_REPLY_PROMPT = (
+    "If the customer's last message only closes the conversation (thanks, okay, "
+    "agreement, a bare emoji) and nothing in the conversation still waits for "
+    "an answer from support, answer with [NO_REPLY] only."
+)
+
 _SUMMARY_CONTEXT = "Summary of the earlier part of the conversation:\n{summary}"
 
 # How transcript roles read in the text sent for summarizing.
@@ -608,6 +617,7 @@ async def run_ai_draft(
     lang_name = {"ru": "Russian", "en": "English"}.get(lang, lang)
     txt = TextMessage(lang)
     system_prompt = _resolve_system_prompt(config.ai)
+    system_prompt += "\n\n" + _NO_REPLY_PROMPT
     system_prompt += f"\n\nIf the user's language is unclear, reply in {lang_name}."
     if ai.canned_replies:
         replies = "\n\n".join(f"[{r.key}]\n{r.text(lang)}" for r in ai.canned_replies)
@@ -632,6 +642,10 @@ async def run_ai_draft(
         return
 
     if not draft:
+        return
+
+    if draft.strip().strip("[]").strip().upper() == _NO_REPLY:
+        await _close_without_reply(config, message, redis, user_data, txt, reminders)
         return
 
     category = None
@@ -704,6 +718,30 @@ async def run_ai_draft(
             logger.warning("Failed to record the draft message of user %s: %s", user_data.id, ex)
     if previous_message_id:
         await _drop_draft_buttons(message.bot, config.bot.GROUP_ID, previous_message_id)
+
+
+async def _close_without_reply(
+    config: Config,
+    message: Message,
+    redis: RedisStorage,
+    user_data: UserData,
+    txt: TextMessage,
+    reminders: bool,
+) -> None:
+    """
+    The user closed the conversation: no draft, the wait for a reply ends, and
+    the topic gets a note saying so. A pending earlier draft stays as it was.
+    """
+    logger.info("User %s closed the conversation, no reply needed", user_data.id)
+    if reminders:
+        await end_reply_wait(redis, user_data.id)
+    with suppress(TelegramBadRequest):
+        await message.bot.send_message(
+            chat_id=config.bot.GROUP_ID,
+            message_thread_id=user_data.message_thread_id,
+            text=txt.get("ai_no_reply"),
+            parse_mode=None,
+        )
 
 
 async def _drop_draft_buttons(bot, chat_id: int, message_id: int) -> None:

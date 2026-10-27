@@ -292,6 +292,7 @@ class _Call:
     def __init__(self, data) -> None:
         self.data = data
         self.bot = _Bot()
+        self.from_user = SimpleNamespace(full_name="Manager")
         self.message = SimpleNamespace(edit_reply_markup=self._noop, delete=self._noop)
 
     @staticmethod
@@ -340,6 +341,43 @@ def test_automatic_reply_ends_the_wait(flag):
         _Provider(), config, message, storage, make_user(), 12, ai=engine().ai, reminders=flag,
     ))
     assert storage.waits == ([("end", 42)] if flag else [])
+
+
+class _ClosingProvider:
+    def __init__(self, answer) -> None:
+        self.answer = answer
+        self.messages = None
+
+    async def draft_reply(self, messages):
+        self.messages = messages
+        return self.answer
+
+
+@pytest.mark.parametrize("answer", ["[NO_REPLY]", " NO_REPLY\n"])
+@pytest.mark.parametrize("flag", [True, False])
+def test_closed_conversation_gets_no_draft_and_ends_the_wait(answer, flag):
+    from app.config import AIConfig
+
+    storage = _Storage()
+    ai = AIConfig(
+        PROVIDER="openai_compatible", BASE_URL="", API_KEY="k", MODEL="m",
+        SYSTEM_PROMPT_PATH="", TIMEOUT_S=5, VISION=False,
+    )
+    config = SimpleNamespace(ai=ai, bot=SimpleNamespace(GROUP_ID=GROUP))
+    bot = _Bot()
+    message = SimpleNamespace(bot=bot, text="Okay 👌", caption=None)
+    provider = _ClosingProvider(answer)
+    asyncio.run(run_ai_draft(
+        provider, config, message, storage, make_user(), 12, ai=engine().ai, reminders=flag,
+    ))
+
+    assert "[NO_REPLY]" in provider.messages[0]["content"]
+    assert storage.waits == ([("end", 42)] if flag else [])
+    # Nothing reached the user, and the earlier pending draft stays.
+    assert storage.draft == "Draft text"
+    assert [(m["chat_id"], m["text"]) for m in bot.sent] == [
+        (GROUP, TextMessage("en").get("ai_no_reply")),
+    ]
 
 
 def wait(user_id, thread_id, minutes, level, language="en"):
