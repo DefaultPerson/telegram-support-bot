@@ -83,6 +83,9 @@ class _Storage:
     async def get_by_message_thread_id(self, thread_id):
         return self.user
 
+    async def get_user(self, id_):
+        return self.user
+
     async def get_ai_draft(self, user_id):
         return None if self.draft is None else (self.draft, None)
 

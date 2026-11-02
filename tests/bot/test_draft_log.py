@@ -33,6 +33,10 @@ class _Storage:
         self.logged: list[tuple] = []
         self.resolved: list[tuple] = []
         self.conversation: list[tuple] = []
+        self.user: UserData | None = None
+
+    async def get_user(self, id_):
+        return self.user
 
     async def get_conversation(self, user_id, limit):
         return [{"role": "user", "content": "where is my payout?"}]
@@ -258,6 +262,20 @@ def test_sent_draft_message_says_who_sent_it():
 
     assert call.message.text == "ai_draft_sent_header Manager\nCategory: X\n\nNewest draft"
     assert call.message.buttons_removed
+
+
+@pytest.mark.parametrize("language,header", [
+    ("ru", "✅ Отправлено клиенту — Manager:"),
+    (None, "✅ Отправлено клиенту — Manager:"),
+    ("en", "✅ Sent to the user by Manager:"),
+])
+def test_sent_mark_is_in_the_users_language(language, header):
+    storage = _Storage(draft="Newest draft", message_id=101)
+    storage.user = make_user()
+    storage.user.language_code = language
+    call = press(_Call("ai:send:42", text="AI draft\n\nNewest draft"), storage)
+
+    assert call.message.text == f"{header}\n\nNewest draft"
 
 
 def test_sent_draft_keeps_its_text_when_it_cannot_be_edited(caplog):

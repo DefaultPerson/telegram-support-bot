@@ -10,6 +10,7 @@ from app.bot.manager import Manager
 from app.bot.policy import PolicyEngine
 from app.bot.utils.redis import RedisStorage
 from app.bot.utils.reminders import end_reply_wait, reminders_enabled
+from app.bot.utils.texts import TextMessage
 
 logger = logging.getLogger(__name__)
 
@@ -101,9 +102,14 @@ async def ai_draft_callback(
             await call.answer(manager.text_message.get("draft_sent"))
             await redis.clear_ai_draft(user_id)
             # The toast alone is easy to miss: the message itself says it went out.
-            header = manager.text_message.get("ai_draft_sent_header").format(
-                name=call.from_user.full_name,
-            )
+            # In the user's language, like the draft header it replaces.
+            try:
+                user_data = await redis.get_user(user_id)
+            except Exception as ex:  # noqa: BLE001 - the draft is already sent
+                logger.warning("Failed to read user %s for the sent mark: %s", user_id, ex)
+                user_data = None
+            txt = TextMessage(user_data.language_code or "ru") if user_data else manager.text_message
+            header = txt.get("ai_draft_sent_header").format(name=call.from_user.full_name)
             await _mark_sent(call.message, header)
             return
         else:
