@@ -13,7 +13,7 @@ from app.bot.handlers.group import message as group_message
 from app.bot.handlers.private import message as private_message
 from app.bot.policy import load_policy_from_dict
 from app.bot.utils import reminders
-from app.bot.utils.policy_runtime import run_ai_draft
+from app.bot.utils.policy_runtime import run_ai_draft, run_ai_layer
 from app.bot.utils.redis.models import UserData
 from app.bot.utils.texts import TextMessage
 
@@ -48,6 +48,10 @@ class _Storage:
         self.draft = "Draft text"
         self.user = make_user()
         self.conversation = [{"role": "user", "content": "where is my payout?"}]
+        self.manager_replies: list[int] = []
+        # What manager_replied_within answers, or the exception it raises.
+        self.manager_talks: bool | Exception = False
+        self.talk_checks: list[tuple] = []
 
     async def start_reply_wait(self, user_id):
         self.waits.append(("start", user_id))
@@ -101,6 +105,15 @@ class _Storage:
 
     async def get_user_category(self, user_id):
         return "payout"
+
+    async def set_manager_replied(self, user_id):
+        self.manager_replies.append(user_id)
+
+    async def manager_replied_within(self, user_id, hours):
+        self.talk_checks.append((user_id, hours))
+        if isinstance(self.manager_talks, Exception):
+            raise self.manager_talks
+        return self.manager_talks
 
     async def get_auto_mode(self, category):
         return True
@@ -419,6 +432,99 @@ def test_conversation_support_never_answered_cannot_be_closed(flag):
     assert storage.waits == []
     assert storage.draft == "Draft text"
     assert bot.sent == []
+
+
+def quiet_engine(hours):
+    return load_policy_from_dict({
+        "ai": {"categories": CATEGORIES, "quiet_after_manager_hours": hours},
+        "reminders": {"enabled": True},
+    })
+
+
+class _CountingProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def draft_reply(self, messages):
+        self.calls += 1
+        return "Payouts go out on Fridays."
+
+
+def run_layer(storage, policy):
+    bot = _Bot()
+    message = SimpleNamespace(bot=bot, text="where is my payout?", caption=None, photo=None, document=None)
+    provider = _CountingProvider()
+    asyncio.run(run_ai_layer(
+        provider, _config(), message, storage, make_user(), policy.ai, reminders=True,
+    ))
+    return provider, bot
+
+
+def test_no_draft_while_a_manager_talks_to_the_user():
+    storage = _Storage()
+    storage.manager_talks = True
+    provider, bot = run_layer(storage, quiet_engine(336))
+
+    assert storage.talk_checks == [(42, 336)]
+    assert provider.calls == 0
+    assert bot.sent == []
+    # The user still waits for the manager.
+    assert storage.waits == []
+    assert storage.draft == "Draft text"
+
+
+@pytest.mark.parametrize("talks", [False, RuntimeError("db is down")])
+def test_draft_as_usual_when_no_manager_talks_or_it_is_unknown(talks):
+    storage = _Storage()
+    storage.manager_talks = talks
+    provider, bot = run_layer(storage, quiet_engine(336))
+
+    assert provider.calls == 1
+    # The auto mode of the category sends it, as without the option.
+    assert [m["chat_id"] for m in bot.sent] == [42, GROUP]
+
+
+def test_option_off_does_not_look_at_manager_replies():
+    storage = _Storage()
+    storage.manager_talks = True
+    provider, _ = run_layer(storage, quiet_engine(0))
+
+    assert storage.talk_checks == []
+    assert provider.calls == 1
+
+
+def test_classification_goes_on_while_a_manager_talks():
+    class Classifier(_CountingProvider):
+        async def draft_reply(self, messages):
+            self.calls += 1
+            return "payout"
+
+    storage = _Storage()
+    storage.manager_talks = True
+    seen = []
+
+    async def set_user_category(user_id, key):
+        seen.append(key)
+
+    storage.set_user_category = set_user_category
+    provider = Classifier()
+    bot = _Bot()
+    message = SimpleNamespace(
+        bot=SimpleNamespace(send_message=bot.send_message, edit_forum_topic=_noop),
+        text="where is my payout?", caption=None, photo=None, document=None,
+    )
+    asyncio.run(run_ai_layer(
+        provider, _config(), message, storage, make_user(), quiet_engine(336).ai,
+        classify=True, reminders=True,
+    ))
+    # One request, the classification; no draft.
+    assert provider.calls == 1
+    assert seen == ["payout"]
+    assert bot.sent == []
+
+
+async def _noop(*args, **kwargs):
+    return None
 
 
 def wait(user_id, thread_id, minutes, level, language="en"):

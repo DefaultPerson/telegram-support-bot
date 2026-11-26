@@ -142,6 +142,9 @@ ai:
   urgent:
     enabled: false
     criteria: ""
+  # Hours with no draft and no canned or automatic reply after a manager wrote
+  # to the user in their own words: the manager leads that conversation. 0: off.
+  quiet_after_manager_hours: 0
 
 # Optional reminders in the user's topic when a reply is overdue, e.g.
 # "⏰ The user has been waiting for a reply for 3 h". A wait starts with the

@@ -432,6 +432,10 @@ async def run_ai_layer(
     """
     if user_data.message_thread_id is None:
         return
+    if draft and await _manager_talks(redis, user_data, ai):
+        draft = False
+    if not (classify or draft):
+        return
 
     data_urls = await _collect_images(config, message, album)
     if classify:
@@ -443,6 +447,25 @@ async def run_ai_layer(
             provider, config, message, redis, user_data, ai.max_context_messages, album,
             ai=ai, data_urls=data_urls, reminders=reminders,
         )
+
+
+async def _manager_talks(redis: RedisStorage, user_data: UserData, ai: AISection) -> bool:
+    """
+    A manager wrote to the user in their own words within
+    ai.quiet_after_manager_hours: the conversation is theirs, so no draft and no
+    canned or automatic reply. The wait for a reply goes on.
+    """
+    hours = ai.quiet_after_manager_hours
+    if not hours:
+        return False
+    try:
+        talks = await redis.manager_replied_within(user_data.id, hours)
+    except Exception as ex:  # noqa: BLE001 - a draft too many beats a missing one
+        logger.warning("Failed to read the last manager reply to user %s: %s", user_data.id, ex)
+        return False
+    if talks:
+        logger.info("A manager talks to user %s, no draft", user_data.id)
+    return talks
 
 
 async def _log_draft(

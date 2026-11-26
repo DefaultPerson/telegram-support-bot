@@ -34,6 +34,7 @@ class _Storage:
         self.resolved: list[tuple] = []
         self.conversation: list[tuple] = []
         self.user: UserData | None = None
+        self.manager_replies: list[int] = []
 
     async def get_user(self, id_):
         return self.user
@@ -64,6 +65,9 @@ class _Storage:
 
     async def resolve_draft(self, user_id, outcome):
         self.resolved.append((user_id, outcome))
+
+    async def set_manager_replied(self, user_id):
+        self.manager_replies.append(user_id)
 
     async def get_user_category(self, user_id):
         return None
@@ -377,6 +381,7 @@ def manager_reply(monkeypatch):
 def test_manager_reply_marks_the_draft(manager_reply):
     storage = manager_reply("Hi, payouts go out on Fridays.", engine(log_drafts=True))
     assert storage.resolved == [(42, "manager_replied")]
+    assert storage.manager_replies == [42]
 
 
 @pytest.mark.parametrize("error", [
@@ -387,16 +392,24 @@ def test_manager_reply_marks_the_draft(manager_reply):
 def test_undelivered_reply_leaves_the_draft_pending(manager_reply, error):
     storage = manager_reply("Hi, payouts go out on Fridays.", engine(log_drafts=True), error=error)
     assert storage.resolved == []
+    assert storage.manager_replies == []
 
 
 def test_command_in_topic_is_not_a_reply(manager_reply):
     storage = manager_reply("/whatever", engine(log_drafts=True))
     assert storage.resolved == []
+    assert storage.manager_replies == []
 
 
 def test_manager_reply_leaves_the_log_alone_by_default(manager_reply):
     assert manager_reply("Hi", engine()).resolved == []
     assert manager_reply("Hi", None).resolved == []
+
+
+def test_manager_reply_is_remembered_whatever_the_policy(manager_reply):
+    """Remembered even with the option off, so turning it on works at once."""
+    assert manager_reply("Hi", engine()).manager_replies == [42]
+    assert manager_reply("Hi", None).manager_replies == [42]
 
 
 def test_silent_mode_reply_is_not_counted(manager_reply):
@@ -408,3 +421,4 @@ def test_silent_mode_reply_is_not_counted(manager_reply):
     storage.get_by_message_thread_id = silent
     manager_reply("note for colleagues", engine(log_drafts=True), storage)
     assert storage.resolved == []
+    assert storage.manager_replies == []

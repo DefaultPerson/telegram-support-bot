@@ -136,6 +136,9 @@ async def create_schema(pool: Pool) -> None:
                     "ON CONFLICT DO NOTHING"
                 )
         await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS category TEXT")
+        # The last time a manager wrote to the user in their own words
+        # (ai.quiet_after_manager_hours). NULL: never since the column exists.
+        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS manager_replied_at TIMESTAMPTZ")
         # The group message with the draft's buttons: only that message may send
         # it. NULL for drafts stored before the column existed.
         await conn.execute("ALTER TABLE ai_drafts ADD COLUMN IF NOT EXISTS message_id BIGINT")
@@ -459,6 +462,24 @@ class RedisStorage:
         """Return the category picked for the user's first message, if any."""
         async with self.pool.acquire() as conn:
             return await conn.fetchval("SELECT category FROM users WHERE id = $1", user_id)
+
+    async def set_manager_replied(self, user_id: int) -> None:
+        """
+        A manager has just written to the user in their own words. Kept out of
+        :meth:`update_user`, like the category.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.execute("UPDATE users SET manager_replied_at = now() WHERE id = $1", user_id)
+
+    async def manager_replied_within(self, user_id: int, hours: int) -> bool:
+        """True if a manager wrote to the user in their own words in the last ``hours`` hours."""
+        async with self.pool.acquire() as conn:
+            replied = await conn.fetchval(
+                "SELECT manager_replied_at > now() - make_interval(hours => $2) FROM users WHERE id = $1",
+                user_id,
+                hours,
+            )
+        return bool(replied)
 
     async def set_user_category(self, user_id: int, category: str) -> None:
         """

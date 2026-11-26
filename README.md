@@ -155,6 +155,7 @@ These options live in the `ai` section of the policy file (so they need
 | `auto_threshold` | `0.95` | `/ai_auto` warns before enabling a category whose share of sent drafts is lower |
 | `auto_min_drafts` | `20` | ... or which has fewer reviewed drafts than this |
 | `canned_replies` | `[]` | Pre-approved replies sent without review. Each item: `key` (up to 40 Latin letters, digits, `_` or `-`) and the text in `ru`, `en` or both |
+| `quiet_after_manager_hours` | `0` | For this many hours after a manager wrote to the user in their own words (delivered, not a command, not in silent mode) the conversation gets no draft and no canned or automatic reply; the first message is still classified and the reminders go on. `0`: off |
 
 Admin commands in the support group (admins are `BOT_DEV_IDS`):
 

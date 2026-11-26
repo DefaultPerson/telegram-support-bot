@@ -141,6 +141,9 @@ class AISection(BaseModel):
     canned_replies: list[AICannedReply] = Field(default_factory=list)
     # Off: no message is checked for urgency.
     urgent: AIUrgent = Field(default_factory=AIUrgent)
+    # Hours the AI keeps out of a conversation after a manager wrote to the user
+    # in their own words: no draft, no canned or automatic reply. 0: off.
+    quiet_after_manager_hours: int = Field(default=0, ge=0)
 
     @field_validator("canned_replies")
     @classmethod

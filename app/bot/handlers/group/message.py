@@ -143,6 +143,9 @@ async def handler(
     # Unknown commands also land here and are not answers, and an answer the
     # user never got leaves the draft pending.
     answered = delivered and not (message.text or "").startswith("/")
+    # The manager talks to the user: the AI keeps out (ai.quiet_after_manager_hours).
+    if answered:
+        await redis.set_manager_replied(user_data.id)
     if answered and policy_engine is not None and policy_engine.ai.log_drafts:
         await redis.resolve_draft(user_data.id, "manager_replied")
     # The user got an answer: the wait for a reply is over.

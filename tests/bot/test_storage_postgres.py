@@ -312,6 +312,41 @@ def test_upgrade_adds_the_summary_table():
     run(scenario, legacy=True)
 
 
+def test_manager_reply_window():
+    async def scenario(pool, storage):
+        await storage.update_user(1, user(1, 10))
+        await storage.update_user(2, user(2, 20))
+        assert not await storage.manager_replied_within(1, 336)
+
+        await storage.set_manager_replied(1)
+        assert await storage.manager_replied_within(1, 336)
+        assert not await storage.manager_replied_within(2, 336)
+        assert not await storage.manager_replied_within(3, 336)
+        # Saving the user keeps it.
+        await storage.update_user(1, user(1, 10))
+        assert await storage.manager_replied_within(1, 336)
+
+        async with pool.acquire() as conn:
+            await conn.execute("UPDATE users SET manager_replied_at = now() - interval '337 hours' WHERE id = 1")
+        assert not await storage.manager_replied_within(1, 336)
+        assert await storage.manager_replied_within(1, 338)
+
+    run(scenario)
+
+
+def test_upgrade_adds_the_manager_reply_column():
+    async def scenario(pool, storage):
+        async with pool.acquire() as conn:
+            await conn.execute("INSERT INTO users (id) VALUES (5)")
+        await create_schema(pool)
+        await create_schema(pool)
+        assert not await storage.manager_replied_within(5, 336)
+        await storage.set_manager_replied(5)
+        assert await storage.manager_replied_within(5, 336)
+
+    run(scenario, legacy=True)
+
+
 async def wait_since(pool, user_id: int, minutes: int, reminded: int = 0) -> None:
     async with pool.acquire() as conn:
         await conn.execute(
