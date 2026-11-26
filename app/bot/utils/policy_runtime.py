@@ -617,7 +617,11 @@ async def run_ai_draft(
     lang_name = {"ru": "Russian", "en": "English"}.get(lang, lang)
     txt = TextMessage(lang)
     system_prompt = _resolve_system_prompt(config.ai)
-    system_prompt += "\n\n" + _NO_REPLY_PROMPT
+    # Nothing to close before support has said a word: a first "." or "ok"
+    # still waits for an answer.
+    closable = bool(summary) or any(turn["role"] == "assistant" for turn in history)
+    if closable:
+        system_prompt += "\n\n" + _NO_REPLY_PROMPT
     system_prompt += f"\n\nIf the user's language is unclear, reply in {lang_name}."
     if ai.canned_replies:
         replies = "\n\n".join(f"[{r.key}]\n{r.text(lang)}" for r in ai.canned_replies)
@@ -645,7 +649,11 @@ async def run_ai_draft(
         return
 
     if draft.strip().strip("[]").strip().upper() == _NO_REPLY:
-        await _close_without_reply(config, message, redis, user_data, txt, reminders)
+        if closable:
+            await _close_without_reply(config, message, redis, user_data, txt, reminders)
+        else:
+            # Unasked for: no draft this time, but the user still waits.
+            logger.warning("The draft for user %s came back as %s unasked, dropped", user_data.id, _NO_REPLY)
         return
 
     category = None

@@ -255,7 +255,9 @@ A wait starts with the user's first message that reaches the topic after the
 last reply they got; later messages do not move it. A reply is a manager's
 message delivered to the user (not a command, not in silent mode), a draft sent
 with its button, or an automatic reply of a category. Policy auto-replies,
-canned replies and `/template` are not replies. Only banned users (and users
+canned replies and `/template` are not replies. Once support has answered, a
+draft may also find that the user's last message only closes the conversation
+("thanks", "ok"): the topic gets a notice instead of a draft, and the wait ends. Only banned users (and users
 without a topic) get no reminders; a closed topic (`/close` or `close_topic`)
 or silent mode does not stop them, since the user still waits.
 

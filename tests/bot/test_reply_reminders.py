@@ -47,6 +47,7 @@ class _Storage:
         self.releases: list[tuple] = []
         self.draft = "Draft text"
         self.user = make_user()
+        self.conversation = [{"role": "user", "content": "where is my payout?"}]
 
     async def start_reply_wait(self, user_id):
         self.waits.append(("start", user_id))
@@ -96,7 +97,7 @@ class _Storage:
         self.draft = None
 
     async def get_conversation(self, user_id, limit):
-        return [{"role": "user", "content": "where is my payout?"}]
+        return list(self.conversation)
 
     async def get_user_category(self, user_id):
         return "payout"
@@ -356,12 +357,30 @@ class _ClosingProvider:
         return self.answer
 
 
+def _config():
+    from app.config import AIConfig
+
+    ai = AIConfig(
+        PROVIDER="openai_compatible", BASE_URL="", API_KEY="k", MODEL="m",
+        SYSTEM_PROMPT_PATH="", TIMEOUT_S=5, VISION=False,
+    )
+    return SimpleNamespace(ai=ai, bot=SimpleNamespace(GROUP_ID=GROUP))
+
+
+ANSWERED = [
+    {"role": "user", "content": "Can I add my channel?"},
+    {"role": "assistant", "content": "No, it does not fit the rules."},
+    {"role": "user", "content": "Okay 👌"},
+]
+
+
 @pytest.mark.parametrize("answer", ["[NO_REPLY]", " NO_REPLY\n"])
 @pytest.mark.parametrize("flag", [True, False])
 def test_closed_conversation_gets_no_draft_and_ends_the_wait(answer, flag):
     from app.config import AIConfig
 
     storage = _Storage()
+    storage.conversation = list(ANSWERED)
     ai = AIConfig(
         PROVIDER="openai_compatible", BASE_URL="", API_KEY="k", MODEL="m",
         SYSTEM_PROMPT_PATH="", TIMEOUT_S=5, VISION=False,
@@ -381,6 +400,25 @@ def test_closed_conversation_gets_no_draft_and_ends_the_wait(answer, flag):
     assert [(m["chat_id"], m["text"]) for m in bot.sent] == [
         (GROUP, TextMessage("en").get("ai_no_reply")),
     ]
+
+
+@pytest.mark.parametrize("flag", [True, False])
+def test_conversation_support_never_answered_cannot_be_closed(flag):
+    """A first "." waits for an answer: the model is not offered NO_REPLY."""
+    storage = _Storage()
+    storage.conversation = [{"role": "user", "content": "."}]
+    bot = _Bot()
+    message = SimpleNamespace(bot=bot, text=".", caption=None)
+    provider = _ClosingProvider("[NO_REPLY]")
+    asyncio.run(run_ai_draft(
+        provider, _config(), message, storage, make_user(), 12, ai=engine().ai, reminders=flag,
+    ))
+
+    assert "[NO_REPLY]" not in provider.messages[0]["content"]
+    # The stray answer is dropped: no notice, no draft, and the wait goes on.
+    assert storage.waits == []
+    assert storage.draft == "Draft text"
+    assert bot.sent == []
 
 
 def wait(user_id, thread_id, minutes, level, language="en"):
